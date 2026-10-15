@@ -178,7 +178,7 @@ jobs:
           path: cpa-core
           key: ${{ steps.core-cache.outputs.cache-primary-key }}
       - name: Build signed macOS DMG
-        if: env.PACKAGE_RELEASE == 'true' && matrix.os == 'darwin'
+        if: env.PACKAGE_RELEASE == 'true' && matrix.os == 'darwin' && secrets.APPLE_CERTIFICATE != ''
         shell: bash
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -274,6 +274,9 @@ jobs:
             --team-id "$APPLE_TEAM_ID" \
             --wait
           xcrun stapler staple "$output_dmg"
+      - name: Archive unsigned macOS portable release
+        if: env.PACKAGE_RELEASE == 'true' && matrix.os == 'darwin' && secrets.APPLE_CERTIFICATE == ''
+        run: tar -czf "${{ steps.package.outputs.stem }}.tar.gz" -C release "${{ steps.package.outputs.stem }}"
       - name: Archive Linux release
         if: env.PACKAGE_RELEASE == 'true' && matrix.os == 'linux'
         run: tar -czf "${{ steps.package.outputs.stem }}.tar.gz" -C release "${{ steps.package.outputs.stem }}"
@@ -286,7 +289,7 @@ jobs:
         if: env.PACKAGE_RELEASE == 'true'
         with:
           name: ${{ steps.package.outputs.stem }}
-          path: ${{ steps.package.outputs.stem }}.${{ matrix.suffix }}
+          path: ${{ steps.package.outputs.stem }}.${{ matrix.os == 'darwin' && secrets.APPLE_CERTIFICATE == '' && 'tar.gz' || matrix.suffix }}
           if-no-files-found: error
           retention-days: 14
   publish:
