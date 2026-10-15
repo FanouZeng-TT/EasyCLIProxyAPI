@@ -435,6 +435,7 @@ jobs:
         shell: bash
         env:
           RELEASE_TAG: ${{ needs.version.outputs.tag }}
+          APPLE_SIGNING_AVAILABLE: ${{ secrets.APPLE_CERTIFICATE != '' }}
         run: |
           set -euo pipefail
           if ! node scripts/version.mjs "${RELEASE_TAG#v}" >/dev/null 2>&1; then
