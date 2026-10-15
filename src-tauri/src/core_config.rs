@@ -2,6 +2,7 @@
 use super::*;
 
 mod alias_edit;
+mod byteproxy;
 mod alias_save;
 mod aliases;
 mod commands;
@@ -10,6 +11,7 @@ mod provider_groups;
 mod settings;
 mod yaml;
 pub(crate) use alias_edit::*;
+pub(crate) use byteproxy::*;
 pub(crate) use alias_save::*;
 pub(crate) use aliases::*;
 pub(crate) use commands::*;
