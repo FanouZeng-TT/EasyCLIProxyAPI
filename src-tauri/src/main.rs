@@ -105,10 +105,10 @@ use tokio_util::sync::CancellationToken;
 use tray::*;
 use zip::ZipArchive;
 
-const RELEASE_PAGE_URL: &str = "https://github.com/router-for-me/CLIProxyAPI/releases/latest";
-const RELEASE_ATOM_URL: &str = "https://github.com/router-for-me/CLIProxyAPI/releases.atom";
+const RELEASE_PAGE_URL: &str = "https://github.com/FanouZeng-TT/CLIProxyAPI/releases/latest";
+const RELEASE_ATOM_URL: &str = "https://github.com/FanouZeng-TT/CLIProxyAPI/releases.atom";
 const RELEASE_DOWNLOAD_PREFIX: &str =
-    "https://github.com/router-for-me/CLIProxyAPI/releases/download/";
+    "https://github.com/FanouZeng-TT/CLIProxyAPI/releases/download/";
 #[cfg(windows)]
 const APP_UPDATE_MANIFEST_URL: &str = "https://github.com/FanouZeng-TT/EasyCLIProxyAPI/releases/latest/download/portable-update-windows.json";
 #[cfg(target_os = "linux")]
@@ -242,7 +242,7 @@ const AGENT_MODIFICATION_STATE_CONFLICT: &str = "conflict";
 const USER_AGENT: &str = concat!(
     "CPA-GUI/",
     env!("CARGO_PKG_VERSION"),
-    " (+https://github.com/router-for-me/CLIProxyAPI)"
+    " (+https://github.com/FanouZeng-TT/CLIProxyAPI)"
 );
 const APP_USER_AGENT: &str = concat!(
     "EasyCLIProxyAPI/",
