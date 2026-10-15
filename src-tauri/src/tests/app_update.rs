@@ -265,7 +265,7 @@ fn portable_update_test_manifest(version: &str) -> PortableUpdateManifest {
         published_at: "2026-07-24T00:00:00.000Z".to_string(),
         release_notes: HashMap::new(),
         release_url: format!(
-            "https://github.com/router-for-me/EasyCLIProxyAPI/releases/tag/v{version}"
+            "https://github.com/FanouZeng-TT/EasyCLIProxyAPI/releases/tag/v{version}"
         ),
         assets: [
             (
@@ -289,7 +289,7 @@ fn portable_update_manifest_uses_only_explicit_locale_release_notes() {
         "schemaVersion": 1,
         "version": "1.2.3",
         "publishedAt": "2026-09-19T00:00:00Z",
-        "releaseUrl": "https://github.com/router-for-me/EasyCLIProxyAPI/releases/tag/v1.2.3",
+        "releaseUrl": "https://github.com/FanouZeng-TT/EasyCLIProxyAPI/releases/tag/v1.2.3",
         "assets": {}
     });
     let legacy: PortableUpdateManifest = serde_json::from_value(value.clone()).unwrap();
@@ -379,7 +379,7 @@ fn portable_update_manifest_requires_both_matching_github_assets() {
             .assets
             .get_mut(&format!("{platform}-amd64"))
             .unwrap()
-            .url = "https://github.com.example.invalid/router-for-me/EasyCLIProxyAPI/releases/download/v1.2.3/update.zip".to_string();
+            .url = "https://github.com.example.invalid/FanouZeng-TT/EasyCLIProxyAPI/releases/download/v1.2.3/update.zip".to_string();
     assert!(validate_portable_update_manifest(&foreign_host).is_err());
 
     let mut mismatched_tag = portable_update_test_manifest("1.2.3");

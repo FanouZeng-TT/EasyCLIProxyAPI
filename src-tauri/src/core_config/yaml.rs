@@ -31,6 +31,7 @@ pub(crate) fn merge_core_config_for_start(
         None
     };
     let merged = merge_core_config_yaml(&template, current.as_deref(), gui_config)?;
+    let merged = apply_byteproxy_kernel_defaults(&merged, install_dir)?;
     write_core_config_if_changed(&config_path, &merged)?;
 
     Ok(config_path)
