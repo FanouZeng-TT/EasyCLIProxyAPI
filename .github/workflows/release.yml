@@ -104,6 +104,7 @@ jobs:
     timeout-minutes: 60
     env:
       PACKAGE_RELEASE: ${{ github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
+      APPLE_SIGNING_AVAILABLE: ${{ secrets.APPLE_CERTIFICATE != '' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -178,7 +179,7 @@ jobs:
           path: cpa-core
           key: ${{ steps.core-cache.outputs.cache-primary-key }}
       - name: Build signed macOS DMG
-        if: env.PACKAGE_RELEASE == 'true' && matrix.os == 'darwin' && secrets.APPLE_CERTIFICATE != ''
+        if: env.PACKAGE_RELEASE == 'true' && matrix.os == 'darwin' && env.APPLE_SIGNING_AVAILABLE == 'true'
         shell: bash
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -275,7 +276,7 @@ jobs:
             --wait
           xcrun stapler staple "$output_dmg"
       - name: Archive unsigned macOS portable release
-        if: env.PACKAGE_RELEASE == 'true' && matrix.os == 'darwin' && secrets.APPLE_CERTIFICATE == ''
+        if: env.PACKAGE_RELEASE == 'true' && matrix.os == 'darwin' && env.APPLE_SIGNING_AVAILABLE != 'true'
         run: tar -czf "${{ steps.package.outputs.stem }}.tar.gz" -C release "${{ steps.package.outputs.stem }}"
       - name: Archive Linux release
         if: env.PACKAGE_RELEASE == 'true' && matrix.os == 'linux'
@@ -289,7 +290,7 @@ jobs:
         if: env.PACKAGE_RELEASE == 'true'
         with:
           name: ${{ steps.package.outputs.stem }}
-          path: ${{ steps.package.outputs.stem }}.${{ matrix.os == 'darwin' && secrets.APPLE_CERTIFICATE == '' && 'tar.gz' || matrix.suffix }}
+          path: ${{ steps.package.outputs.stem }}.${{ matrix.os == 'darwin' && env.APPLE_SIGNING_AVAILABLE != 'true' && 'tar.gz' || matrix.suffix }}
           if-no-files-found: error
           retention-days: 14
   publish:
