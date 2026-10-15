@@ -38,7 +38,10 @@ export async function generatePortableUpdateManifest({
   const platformSpecs = {
     windows: { display: 'Windows', suffix: 'zip' },
     linux: { display: 'Linux', suffix: 'tar.gz' },
-    darwin: { display: 'Darwin', suffix: 'dmg' },
+    darwin: {
+      display: 'Darwin',
+      suffix: process.env.APPLE_SIGNING_AVAILABLE === 'true' ? 'dmg' : 'tar.gz',
+    },
   };
   const normalizedPlatform = String(platform).trim().toLowerCase();
   const platformSpec = platformSpecs[normalizedPlatform];

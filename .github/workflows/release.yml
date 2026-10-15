@@ -327,6 +327,7 @@ jobs:
         shell: bash
         env:
           RELEASE_TAG: ${{ needs.version.outputs.tag }}
+          APPLE_SIGNING_AVAILABLE: ${{ secrets.APPLE_CERTIFICATE != '' }}
         run: |
           set -euo pipefail
           for platform in windows linux darwin; do
