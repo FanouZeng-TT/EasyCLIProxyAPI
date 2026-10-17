@@ -287,6 +287,10 @@ jobs:
           test -d "$app_path"
           test -s "$resources_dir/portable-app.json"
           test -s "$resources_dir/core-version.txt"
+          # Seal the complete bundle after adding resources. This ad-hoc signature is
+          # locally verifiable and prevents Gatekeeper from reporting bundle damage.
+          codesign --force --deep --sign - "$app_path"
+          codesign --verify --deep --strict --verbose=2 "$app_path"
           COPYFILE_DISABLE=1 tar -czf "${{ steps.package.outputs.stem }}.tar.gz" \
             -C "$(dirname "$app_path")" "$(basename "$app_path")"
       - name: Archive Linux release
