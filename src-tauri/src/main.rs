@@ -17,24 +17,16 @@ mod instance_lock;
 #[cfg(any(target_os = "linux", test))]
 mod linux_graphics;
 mod management_api;
-mod network_proxy;
-#[cfg(any(
-    target_os = "linux",
-    target_os = "macos",
-    target_os = "windows"
-))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 mod native_i18n;
+mod network_proxy;
 mod oauth_browser;
 mod plugin_webview;
 mod plugins;
 mod privacy_mode;
 mod progress;
 mod provider_health;
-#[cfg(any(
-    target_os = "linux",
-    target_os = "macos",
-    target_os = "windows"
-))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 mod tray;
 mod usage;
 #[cfg(target_os = "windows")]
@@ -89,11 +81,7 @@ use tar::Archive;
 use tauri::menu::PredefinedMenuItem;
 #[cfg(target_os = "macos")]
 use tauri::tray::{MouseButtonState, TrayIcon};
-#[cfg(any(
-    target_os = "linux",
-    target_os = "macos",
-    target_os = "windows"
-))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
@@ -102,11 +90,7 @@ use tauri::{Emitter, LogicalSize, Manager};
 use tauri_plugin_autostart::ManagerExt as AutostartManagerExt;
 use tauri_plugin_opener::OpenerExt;
 use tokio_util::sync::CancellationToken;
-#[cfg(any(
-    target_os = "linux",
-    target_os = "macos",
-    target_os = "windows"
-))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 use tray::*;
 use zip::ZipArchive;
 
@@ -496,6 +480,8 @@ struct PortableUpdateAsset {
     fallback_urls: Vec<String>,
     sha256: String,
     size_bytes: u64,
+    #[serde(default)]
+    signature: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -591,6 +577,8 @@ struct MacosUpdateDescriptor {
     ack_path: PathBuf,
     work_dir: PathBuf,
     target_version: String,
+    #[serde(default)]
+    trusted_by_ed25519: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -652,7 +640,10 @@ struct GuiConfigFile {
     logs_max_total_size_mb: u32,
     error_logs_max_files: u32,
     usage_statistics_enabled: bool,
-    #[serde(rename = "usage_statistics_disabled", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "usage_statistics_disabled",
+        skip_serializing_if = "Option::is_none"
+    )]
     usage_statistics_disabled: Option<bool>,
     redis_usage_queue_retention_seconds: u32,
     request_log: bool,
@@ -807,8 +798,8 @@ fn version_download_source_candidates(
 }
 
 fn normalize_custom_download_mirror_url(value: &str) -> Result<String, String> {
-    let mut url =
-        reqwest::Url::parse(value.trim()).map_err(|error| format!("Invalid mirror URL: {error}"))?;
+    let mut url = reqwest::Url::parse(value.trim())
+        .map_err(|error| format!("Invalid mirror URL: {error}"))?;
     if url.scheme() != "https"
         || url.host_str().is_none()
         || url.port().is_some()
@@ -1171,7 +1162,6 @@ struct AgentModelOption {
     #[serde(skip)]
     reasoning_levels: Vec<String>,
 }
-
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -2315,7 +2305,10 @@ impl GuiConfigState {
         self.sync_core_settings_internal(settings, None, false, false)
     }
 
-    fn sync_core_logging_settings(&self, settings: &CoreConfigSettings) -> Result<GuiConfigFile, String> {
+    fn sync_core_logging_settings(
+        &self,
+        settings: &CoreConfigSettings,
+    ) -> Result<GuiConfigFile, String> {
         self.sync_core_settings_internal(settings, None, false, true)
     }
 
@@ -2358,7 +2351,8 @@ impl GuiConfigState {
             config.error_logs_max_files = settings.error_logs_max_files;
             config.usage_statistics_enabled = settings.usage_statistics_enabled;
             if save_usage_preference {
-                config.usage_statistics_disabled = (!settings.usage_statistics_enabled).then_some(true);
+                config.usage_statistics_disabled =
+                    (!settings.usage_statistics_enabled).then_some(true);
             }
             config.redis_usage_queue_retention_seconds =
                 settings.redis_usage_queue_retention_seconds;
@@ -2505,7 +2499,10 @@ struct GithubAsset {
 fn main() {
     let helper_args = env::args_os().collect::<Vec<_>>();
     if helper_args.get(1).is_some_and(|a| a == "--cpa-copilot-cli") {
-        let code = run_copilot_helper(&helper_args).unwrap_or_else(|error| { eprintln!("{error}"); 1 });
+        let code = run_copilot_helper(&helper_args).unwrap_or_else(|error| {
+            eprintln!("{error}");
+            1
+        });
         std::process::exit(code);
     }
     if antigravity_helper_requested(&helper_args) {
@@ -2521,7 +2518,9 @@ fn main() {
             let result = args
                 .next()
                 .map(PathBuf::from)
-                .ok_or_else(|| "Application update helper is missing its descriptor file".to_string())
+                .ok_or_else(|| {
+                    "Application update helper is missing its descriptor file".to_string()
+                })
                 .and_then(|path| run_portable_update_helper(&path));
             if let Err(error) = result {
                 eprintln!("{error}");

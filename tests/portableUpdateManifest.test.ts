@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync, verify } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -22,12 +22,15 @@ test('macOS uses a new primary channel and keeps the legacy manifest alias', () 
   expect(portableUpdateManifestNames('linux')).toEqual(['portable-update-linux.json']);
 });
 
-test('macOS manifest CLI publishes both update channels', async () => {
+test('macOS manifest CLI publishes both signed update channels', async () => {
   const root = await mkdtemp(join(tmpdir(), 'easycli-darwin-manifest-cli-'));
+  const previousSigningKey = process.env.MACOS_UPDATE_ED25519_PRIVATE_KEY;
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+  process.env.MACOS_UPDATE_ED25519_PRIVATE_KEY = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
   try {
     for (const arch of ['amd64', 'aarch64']) {
       await writeFile(
-        join(root, `EasyCLIProxyAPI-v1.2.3-Darwin-${arch}.dmg`),
+        join(root, `EasyCLIProxyAPI-v1.2.3-Darwin-${arch}.tar.gz`),
         `darwin ${arch} release`,
       );
     }
@@ -47,7 +50,10 @@ test('macOS manifest CLI publishes both update channels', async () => {
       'v1.2.3',
       '--release-notes',
       notesPath,
-    ], { encoding: 'utf8' });
+    ], {
+      encoding: 'utf8',
+      env: { ...process.env, APPLE_SIGNING_AVAILABLE: 'false' },
+    });
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
@@ -60,7 +66,14 @@ test('macOS manifest CLI publishes both update channels', async () => {
     expect(legacy).toEqual(primary);
     expect(primary.releaseNotes).toEqual(notes);
     expect(primary.releaseNotes.ja).toBeUndefined();
+    for (const arch of ['amd64', 'aarch64']) {
+      const asset = primary.assets[`darwin-${arch}`];
+      const payload = await readFile(join(root, `EasyCLIProxyAPI-v1.2.3-Darwin-${arch}.tar.gz`));
+      expect(verify(null, payload, publicKey, Buffer.from(asset.signature, 'base64'))).toBe(true);
+    }
   } finally {
+    if (previousSigningKey === undefined) delete process.env.MACOS_UPDATE_ED25519_PRIVATE_KEY;
+    else process.env.MACOS_UPDATE_ED25519_PRIVATE_KEY = previousSigningKey;
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -132,7 +145,6 @@ describe('Windows 便携更新清单', () => {
 describe('跨平台便携更新清单', () => {
   test.each([
     ['linux', 'Linux', 'tar.gz'],
-    ['darwin', 'Darwin', 'dmg'],
   ] as const)('%s 清单直接引用完整发布包', async (platform, display, suffix) => {
     const root = await mkdtemp(join(tmpdir(), `easycli-${platform}-manifest-test-`));
     try {
