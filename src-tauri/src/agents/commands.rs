@@ -1069,17 +1069,40 @@ pub(crate) fn resolve_claude_desktop_model_mappings(
         return Ok(None);
     }
     let mut requested = requested.ok_or("Reconfigure the Claude Desktop model and alias")?;
+    if !(1_000..=1_000_000).contains(&requested.max_context_tokens) {
+        return Err("Claude Desktop context window must be between 1000 and 1000000".into());
+    }
     let resolve =
         |model: &str| resolve_available_agent_model(models, &validate_agent_model(model)?);
     if let Some(entries) = requested.desktop_models.as_mut() {
         validate_claude_desktop_entries(entries)?;
+        if entries.len() == BYTEPROXY_CLAUDE_ROUTES.len()
+            && entries.iter().any(|entry| is_byteproxy_model(&entry.model, models))
+        {
+            for (index, entry) in entries.iter().enumerate() {
+                if entry.model.trim().is_empty() || !is_byteproxy_model(&entry.model, models) {
+                    return Err("Choose a ByteProxy target model for Opus, Sonnet, and Haiku".into());
+                }
+                if !entry.alias.trim().eq_ignore_ascii_case(BYTEPROXY_CLAUDE_ROUTES[index]) {
+                    return Err("ByteProxy Claude roles must stay in Opus, Sonnet, Haiku order".into());
+                }
+            }
+        }
         for entry in entries.iter_mut() {
             entry.model = resolve_claude_desktop_source_model(models, entry.source_or_alias())?;
-            entry.alias = if entry.alias.trim().eq_ignore_ascii_case(&entry.model) {
-                String::new()
+            if is_byteproxy_model(&entry.model, models) {
+                if !BYTEPROXY_CLAUDE_ROUTES.iter().any(|route| route.eq_ignore_ascii_case(entry.alias.trim())) {
+                    return Err("Choose Opus, Sonnet, or Haiku for the ByteProxy model".into());
+                }
+                entry.alias = entry.alias.trim().to_ascii_lowercase();
+                entry.context_1m = false;
             } else {
-                entry.alias.trim().to_string()
-            };
+                entry.alias = if entry.alias.trim().eq_ignore_ascii_case(&entry.model) {
+                    String::new()
+                } else {
+                    entry.alias.trim().to_string()
+                };
+            }
         }
         requested.sonnet = entries[0].source_or_alias().to_string();
         requested.opus.clear();
@@ -1208,8 +1231,11 @@ pub(crate) async fn apply_agent_config(
         &model,
         claude_desktop_model_mappings,
     )?;
+    let desktop_context_window = claude_desktop_model_mappings
+        .as_ref()
+        .map(|mappings| mappings.max_context_tokens);
     prepare_vscode_copilot_connection(client, &home, api_key, executable_overrides.as_ref()).await?;
-    commit_agent_with_core(&config, claude_desktop_model_mappings, &prepared.models, |claude_desktop_model_mappings| {
+    let result = commit_agent_with_core(&config, claude_desktop_model_mappings, &prepared.models, |claude_desktop_model_mappings| {
         let _guard = AGENT_CONFIG_FILE_LOCK
             .lock()
             .map_err(|_| "Agent configuration file lock is poisoned".to_string())?;
@@ -1227,7 +1253,11 @@ pub(crate) async fn apply_agent_config(
                 claude_desktop_model_mappings,
             },
         )
-    }).await
+    }).await?;
+    if let Some(window) = desktop_context_window {
+        apply_claude_desktop_context_environment(window)?;
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -1281,8 +1311,11 @@ pub(crate) async fn set_agent_config_enabled(
             &model,
             claude_desktop_model_mappings,
         )?;
+        let desktop_context_window = claude_desktop_model_mappings
+            .as_ref()
+            .map(|mappings| mappings.max_context_tokens);
         prepare_vscode_copilot_connection(client, &home, api_key, executable_overrides.as_ref()).await?;
-        commit_agent_with_core(&config, claude_desktop_model_mappings, &prepared.models, |claude_desktop_model_mappings| {
+        let result = commit_agent_with_core(&config, claude_desktop_model_mappings, &prepared.models, |claude_desktop_model_mappings| {
             let _guard = AGENT_CONFIG_FILE_LOCK
                 .lock()
                 .map_err(|_| "Agent configuration file lock is poisoned".to_string())?;
@@ -1305,7 +1338,11 @@ pub(crate) async fn set_agent_config_enabled(
                     claude_desktop_model_mappings,
                 },
             )
-        }).await
+        }).await?;
+        if let Some(window) = desktop_context_window {
+            apply_claude_desktop_context_environment(window)?;
+        }
+        Ok(result)
     } else {
         let config = gui_config_state.snapshot()?;
         let _guard = AGENT_CONFIG_FILE_LOCK

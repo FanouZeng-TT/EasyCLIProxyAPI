@@ -81,6 +81,84 @@ fn desktop_empty_alias_uses_original_id_without_creating_a_mapping() {
 }
 
 #[test]
+fn desktop_byteproxy_models_use_fixed_claude_routes() {
+    let mut models = test_agent_models(&[
+        "llmbox_deepseek-v4.1-flash",
+        "trae_gpt-5.4",
+        "auto",
+    ]);
+    for (model, label) in models.iter_mut().zip([
+        "DeepSeek V4.1 Flash · LLMBox🟢98",
+        "GPT-5.4 · TRAE🟢98",
+        "Auto · LLMBox",
+    ]) {
+        model.alias = Some(label.into());
+    }
+    let requested = custom_mappings(&[
+        ("llmbox_deepseek-v4.1-flash", "cpa-opus-4-5"),
+        ("trae_gpt-5.4", "cpa-sonnet-4-5"),
+        ("auto", "cpa-haiku-4-5"),
+    ]);
+    let mut requested = requested;
+    requested.max_context_tokens = 350_000;
+    let mut mappings = resolve_claude_desktop_model_mappings(
+        AgentClient::ClaudeDesktop,
+        &models,
+        "llmbox_deepseek-v4.1-flash",
+        Some(requested),
+    )
+    .unwrap()
+    .unwrap();
+    assign_available_claude_desktop_aliases(&mut mappings, &models, "config-version: 8\n").unwrap();
+    assert_eq!(mappings.desktop_models.as_ref().unwrap()[0].alias, "cpa-opus-4-5");
+    let profile: serde_json::Value = serde_json::from_str(&build_claude_desktop_profile(
+        None,
+        "http://localhost:8317",
+        "key",
+        "llmbox_deepseek-v4.1-flash",
+        &models,
+        Some(&mappings),
+    )
+    .unwrap())
+    .unwrap();
+    let entries = profile["inferenceModels"].as_array().unwrap();
+    assert_eq!(entries[0]["name"], "cpa-opus-4-5");
+    assert_eq!(entries[0]["labelOverride"], "llmbox_deepseek-v4.1-flash");
+    assert!(entries[0].get("contextWindow").is_none());
+    assert_eq!(entries[1]["name"], "cpa-sonnet-4-5");
+    assert!(entries[1].get("contextWindow").is_none());
+    assert_eq!(entries[2]["name"], "cpa-haiku-4-5");
+    assert!(entries[2].get("contextWindow").is_none());
+
+    let config = "config-version: 8\nplugins:\n  configs:\n    byteproxy:\n      api_key: keep\n      claude_aliases:\n        claude-custom: custom-target\n        claude-opus-4-5-cpa: legacy-target\n";
+    let updated = apply_byteproxy_claude_aliases(config, &mappings, &models).unwrap();
+    let yaml = json(&updated);
+    let byteproxy = &yaml["plugins"]["configs"]["byteproxy"];
+    assert_eq!(byteproxy["api_key"], "keep");
+    assert_eq!(byteproxy["claude_alias_enabled"], true);
+    assert_eq!(byteproxy["claude_aliases"]["claude-custom"], "custom-target");
+    assert_eq!(byteproxy["claude_aliases"]["cpa-opus-4-5"], "llmbox_deepseek-v4.1-flash");
+    assert_eq!(byteproxy["claude_aliases"]["cpa-sonnet-4-5"], "trae_gpt-5.4");
+    assert_eq!(byteproxy["claude_aliases"]["cpa-haiku-4-5"], "auto");
+    // 内核配置更新不支持删除任意键：旧受管入口继续留在 YAML 里，由插件解析时忽略。
+    assert_eq!(byteproxy["claude_aliases"]["claude-opus-4-5-cpa"], "legacy-target");
+    assert_eq!(byteproxy["claude_context_window"], 350_000);
+
+    let cleared = apply_byteproxy_claude_aliases(
+        &updated,
+        &custom_mappings(&[("gpt-one", "claude-opus-4-6")]),
+        &test_agent_models(&["gpt-one"]),
+    )
+    .unwrap();
+    let cleared = json(&cleared);
+    let aliases = &cleared["plugins"]["configs"]["byteproxy"]["claude_aliases"];
+    assert_eq!(aliases["claude-custom"], "custom-target");
+    for route in BYTEPROXY_CLAUDE_ROUTES {
+        assert_eq!(aliases[route], "auto");
+    }
+}
+
+#[test]
 fn desktop_legacy_alias_only_entry_resolves_to_original_with_empty_alias() {
     let mappings = custom_mappings(&[("", "claude-sonnet-custom-7")]);
     let model = resolve_agent_configuration_model(
@@ -357,13 +435,13 @@ fn desktop_routes_skip_excluded_sources_and_aliases() {
 
 #[test]
 fn desktop_routes_repair_managed_aliases_on_excluded_providers() {
-    for mappings in [
-        custom_mappings(&[("model-a", "claude-opus-5")]),
-        ClaudeDesktopModelMappings::all("model-a"),
+    for (mappings, family_wildcard) in [
+        (custom_mappings(&[("model-a", "claude-opus-5")]), "claude-*"),
+        (ClaudeDesktopModelMappings::all("model-a"), "cpa-*"),
     ] {
         let initial = "codex-api-key:\n  - api-key: old-key\n    models: [{name: model-a}]\n";
         let configured = ensure_claude_desktop_model_aliases_in_yaml(initial, &mappings, &[]).unwrap();
-        for excluded in ["*", "claude-*"] {
+        for excluded in ["*", family_wildcard] {
             let blocked = configured.replacen("api-key: old-key", &format!("api-key: old-key\n    excluded-models: ['{excluded}']"), 1);
             assert!(ensure_claude_desktop_model_aliases_in_yaml(&blocked, &mappings, &[]).is_err());
             let input = format!("{blocked}  - api-key: active-key\n    models: [{{name: model-a}}]\n");

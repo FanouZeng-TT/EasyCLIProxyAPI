@@ -8,8 +8,39 @@ export const desktopModelId = (entry: ClaudeDesktopModelMapping) => entry.alias.
 
 export const claudeDesktopDefaultAliases = ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5'];
 
+export const byteProxyClaudeRoutes = [
+  { name: 'cpa-opus-4-5', role: 'opus' },
+  { name: 'cpa-sonnet-4-5', role: 'sonnet' },
+  { name: 'cpa-haiku-4-5', role: 'haiku' },
+] as const;
+
+export const CLAUDE_DESKTOP_DEFAULT_CONTEXT_TOKENS = 350_000;
+
+const byteProxyLabel = (label: string | undefined) => Boolean(label
+  && (label.includes(' · LLMBox') || label.includes(' · TRAE') || label.includes('Claude 别名 →')));
+
+export const isByteProxyClaudeRoute = (model: ModelOption) =>
+  model.alias?.includes('Claude 别名 →') ?? false;
+
+export const isByteProxyModel = (name: string, models: ModelOption[]) => {
+  const normalized = modelKey(name);
+  return models.some((model) => modelKey(model.name) === normalized && byteProxyLabel(model.alias))
+    || (normalized === 'auto' && models.some((model) => byteProxyLabel(model.alias)));
+};
+
+export const byteProxyTargetModels = (models: ModelOption[]) =>
+  models.filter((model) => isByteProxyModel(model.name, models) && !isByteProxyClaudeRoute(model));
+
+export const byteProxyRouteForIndex = (index: number) =>
+  byteProxyClaudeRoutes[Math.min(index, byteProxyClaudeRoutes.length - 1)].name;
+
+// 受管入口刻意不使用 claude- 前缀（Claude Code 才会采用 GUI 写入的自定义上下文窗口），
+// 因此别名规则对它们放行，普通自定义别名仍然按 claude-* 规则校验。
+export const isManagedByteProxyRoute = (alias: string) =>
+  byteProxyClaudeRoutes.some((route) => route.name === modelKey(alias));
+
 export const createDefaultDesktopModels = (): ClaudeDesktopModelMapping[] =>
-  claudeDesktopDefaultAliases.map((alias) => ({ model: '', alias, context1m: false }));
+  byteProxyClaudeRoutes.map((route) => ({ model: '', alias: route.name, context1m: false }));
 
 export const selectedDesktopModelEntries = (entries: ClaudeDesktopModelMapping[]) =>
   entries.filter((entry) => entry.model.trim());
@@ -41,7 +72,7 @@ export function desktopEntryValidation(entry: ClaudeDesktopModelMapping) {
   const alias = entry.alias.trim();
   if (!model) return 'model' as const;
   if (new TextEncoder().encode(model).length > 240 || /[\s\u0000-\u001f\u007f]/.test(model)) return 'modelFormat' as const;
-  if (alias && modelKey(alias) !== modelKey(model) && !validClaudeDesktopAlias(alias)) return 'alias' as const;
+  if (alias && !isManagedByteProxyRoute(alias) && modelKey(alias) !== modelKey(model) && !validClaudeDesktopAlias(alias)) return 'alias' as const;
   return null;
 }
 
@@ -53,6 +84,7 @@ export function desktopAliasNotice(
 ) {
   const alias = modelKey(entry.alias);
   if (!alias) return null;
+  if (isByteProxyModel(entry.model, models) && isManagedByteProxyRoute(alias)) return null;
   if (alias === modelKey(entry.model)) return 'sameModel' as const;
   const appliedAlias = appliedEntries.some((applied) => modelKey(applied.alias) === alias
     && applied.model.trim() && modelKey(applied.model) !== alias);
@@ -68,7 +100,7 @@ export function suffixCollidingDesktopAliases(
 ) {
   return entries.map((entry, index) => {
     const alias = entry.alias.trim();
-    if (!alias || desktopAliasNotice(entry, entries, models, appliedEntries) !== 'aliasExists') return entry;
+    if (!entry.model.trim() || !alias || desktopAliasNotice(entry, entries, models, appliedEntries) !== 'aliasExists') return entry;
     const suffixed = `${alias}-cc`;
     if (!validClaudeDesktopAlias(suffixed)) return entry;
     const candidate = { ...entry, alias: suffixed };
@@ -84,7 +116,7 @@ export function desktopModelEntries(mappings: AgentModelMappings): ClaudeDesktop
     const model = entry.model.trim() || entry.alias.trim();
     return { ...entry, model, alias: modelKey(entry.alias) === modelKey(model) ? '' : entry.alias };
   });
-  const aliases = ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'];
+  const aliases = byteProxyClaudeRoutes.map((route) => route.name);
   const entries = (['opus', 'sonnet', 'haiku'] as const).flatMap((role, index) => {
     const model = mappings[role];
     if (!model) return [];

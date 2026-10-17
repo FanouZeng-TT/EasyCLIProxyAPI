@@ -595,6 +595,10 @@ async fn put_management_legacy_alias_view_changes(
     let mut current = parse(current)?;
     let mut updated = parse(updated)?;
     let v8 = current.get(yaml_key("config-version")).and_then(serde_norway::Value::as_i64) == Some(8);
+    let current_byteproxy = nested_yaml_value(&current, &["plugins", "configs", "byteproxy"])
+        .cloned();
+    let updated_byteproxy = nested_yaml_value(&updated, &["plugins", "configs", "byteproxy"])
+        .cloned();
 
     // OAuth aliases are written by put_management_oauth_model_aliases so their
     // transaction and rollback remain independent from other alias routes.
@@ -637,6 +641,13 @@ async fn put_management_legacy_alias_view_changes(
             put_management_config_value(config, "requests/payload", value).await?;
         } else {
             delete_management_config_value(config, "requests/payload").await?;
+        }
+    }
+    if current_byteproxy != updated_byteproxy {
+        if let Some(value) = updated_byteproxy.as_ref() {
+            put_management_config_value(config, "plugins/configs/byteproxy", value).await?;
+        } else {
+            delete_management_config_value(config, "plugins/configs/byteproxy").await?;
         }
     }
     for (provider, groups) in provider_changes {
@@ -754,6 +765,9 @@ pub(crate) fn assign_available_claude_desktop_aliases(
     let managed_aliases = managed_claude_desktop_aliases(&sources);
     let mut planned = entries.clone();
     for index in 0..planned.len() {
+        if is_byteproxy_model(&planned[index].model, models) {
+            continue;
+        }
         if !planned[index].has_mapping() {
             continue;
         }
@@ -822,6 +836,9 @@ pub(crate) fn ensure_claude_desktop_model_aliases_with_oauth_definitions_and_rou
         validate_claude_desktop_entries(entries)?;
         let managed_aliases = managed_claude_desktop_aliases(&sources);
         for entry in entries {
+            if is_byteproxy_model(&entry.model, models) {
+                continue;
+            }
             if !entry.has_mapping() {
                 continue;
             }
@@ -835,6 +852,9 @@ pub(crate) fn ensure_claude_desktop_model_aliases_with_oauth_definitions_and_rou
             }
         }
         for entry in entries {
+            if is_byteproxy_model(&entry.model, models) {
+                continue;
+            }
             if entry.has_mapping() {
                 ensure_claude_desktop_model_alias(
                     root,
@@ -909,7 +929,14 @@ pub(crate) fn validate_claude_desktop_entries(
             return Err("Source model ID cannot contain whitespace".into());
         }
         let alias = entry.alias.trim();
-        if !alias.is_empty() && !alias.eq_ignore_ascii_case(entry.source_or_alias()) && !valid_claude_desktop_alias(alias) {
+        let is_byteproxy_route = BYTEPROXY_CLAUDE_ROUTES
+            .iter()
+            .any(|route| route.eq_ignore_ascii_case(alias));
+        if !alias.is_empty()
+            && !alias.eq_ignore_ascii_case(entry.source_or_alias())
+            && !is_byteproxy_route
+            && !valid_claude_desktop_alias(alias)
+        {
             return Err(format!("Claude Desktop alias {alias} must start with claude-, may contain only lowercase letters, numbers, hyphens, and periods, and cannot contain other model family names such as gpt, grok, gemini, or deepseek"));
         }
         let id = entry.model_id();
@@ -1144,6 +1171,7 @@ pub(crate) fn claude_desktop_uses_source_directly(
         .iter()
         .any(|model| model.name.eq_ignore_ascii_case(source_model) && model.is_alias)
         || is_claude_native_model_id(source_model)
+        || is_claude_desktop_route_id(source_model)
 }
 
 pub(crate) fn is_claude_native_model_id(name: &str) -> bool {

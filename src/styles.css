@@ -7000,11 +7000,11 @@ textarea:focus-visible {
 
 .agent-desktop-model-list {
   display: grid;
-  gap: 8px;
+  gap: 5px;
 }
 
 .agent-desktop-model-row {
-  padding: 10px;
+  padding: 7px 9px;
   border-radius: 7px;
   box-shadow: none;
 }
@@ -7013,19 +7013,33 @@ textarea:focus-visible {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   align-items: end;
-  gap: 12px;
+  gap: 8px;
+}
+
+.agent-desktop-models:has(.agent-desktop-model-field:only-child) .agent-desktop-model-fields {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .agent-desktop-model-field {
   display: grid;
   min-width: 0;
-  gap: 5px;
+  gap: 3px;
   font-size: var(--font-size-label);
   color: var(--theme-5f5a53);
 }
 
+.agent-desktop-model-field > select {
+  width: 100%;
+  height: 44px;
+}
+
 .agent-desktop-model-actions {
   height: 44px;
+}
+
+.agent-desktop-context-window {
+  max-width: 360px;
+  margin-top: 12px;
 }
 
 .agent-desktop-model-notice {

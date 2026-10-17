@@ -1,10 +1,99 @@
 use super::*;
 
-// ByteProxy 定制：在内核配置里预置字节插件商店，并保证插件目录使用绝对路径。
-// 只做加法：已有 store-sources 条目保留，用户自定的绝对插件目录不覆盖。
+// ByteProxy customization: preconfigure the plugin store and use an absolute plugin path.
+// Existing store sources and user-defined absolute plugin directories remain unchanged.
 
 pub(crate) const BYTEPROXY_PLUGIN_STORE_URL: &str =
     "https://lf0-fast-deliver-inner.bytedance.net/obj/eden-internal/2121eh7bvuhmnulg/byteproxy/registry.json";
+
+pub(crate) const BYTEPROXY_CLAUDE_ROUTES: [&str; 3] = [
+    CLAUDE_DESKTOP_OPUS_MODEL_ID,
+    CLAUDE_DESKTOP_SONNET_MODEL_ID,
+    CLAUDE_DESKTOP_HAIKU_MODEL_ID,
+];
+
+const LEGACY_BYTEPROXY_CLAUDE_ROUTES: [&str; 6] = [
+    "claude-opus-4-5",
+    "claude-sonnet-4-5",
+    "claude-haiku-4-5",
+    "claude-opus-4-5-cpa",
+    "claude-sonnet-4-5-cpa",
+    "claude-haiku-4-5-cpa",
+];
+
+/// 旧受管入口仍留在 YAML 里：内核配置更新不支持删除任意键，插件解析时会忽略它们。
+fn has_legacy_byteproxy_claude_override(aliases: &serde_norway::Mapping) -> bool {
+    LEGACY_BYTEPROXY_CLAUDE_ROUTES
+        .iter()
+        .any(|route| aliases.contains_key(yaml_key(route)))
+}
+
+pub(crate) fn is_byteproxy_model(model: &str, models: &[AgentModelOption]) -> bool {
+    let model = model.trim();
+    let is_byteproxy_label = |label: &str| {
+        label.contains(" · LLMBox")
+            || label.contains(" · TRAE")
+            || label.contains("Claude 别名 →")
+    };
+    models.iter().any(|entry| {
+        entry.name.eq_ignore_ascii_case(model)
+            && entry.alias.as_deref().is_some_and(is_byteproxy_label)
+    }) || (model.eq_ignore_ascii_case("auto")
+        && models.iter().filter_map(|entry| entry.alias.as_deref()).any(is_byteproxy_label))
+}
+
+pub(crate) fn apply_byteproxy_claude_aliases(
+    content: &str,
+    mappings: &ClaudeDesktopModelMappings,
+    models: &[AgentModelOption],
+) -> Result<String, String> {
+    let Some(entries) = mappings.desktop_models.as_ref() else {
+        return Ok(content.to_string());
+    };
+    let managed = entries.iter().filter(|entry| is_byteproxy_model(&entry.model, models))
+        .map(|entry| (entry.alias.trim(), entry.model.trim()))
+        .collect::<Vec<_>>();
+    let existing_aliases = serde_norway::from_str::<serde_norway::Value>(content)
+        .ok()
+        .and_then(|document| document.get("plugins")?.get("configs")?.get("byteproxy")?
+            .get("claude_aliases")?.as_mapping().cloned())
+        .unwrap_or_default();
+    let has_managed_override = BYTEPROXY_CLAUDE_ROUTES
+        .iter()
+        .any(|route| existing_aliases.contains_key(yaml_key(route)))
+        || has_legacy_byteproxy_claude_override(&existing_aliases);
+    if managed.is_empty() && !has_managed_override {
+        return Ok(content.to_string());
+    }
+    patch_core_yaml_document(content, |document| {
+        let mut aliases = existing_aliases.clone();
+        for route in BYTEPROXY_CLAUDE_ROUTES {
+            aliases.insert(yaml_key(route), serde_norway::Value::String("auto".to_string()));
+        }
+        for (route, target) in &managed {
+            if !BYTEPROXY_CLAUDE_ROUTES.iter().any(|allowed| allowed.eq_ignore_ascii_case(route)) {
+                return Err(format!("Unsupported ByteProxy Claude route: {route}"));
+            }
+            aliases.insert(yaml_key(route), serde_norway::Value::String((*target).to_string()));
+        }
+        let mut changed = set_core_yaml_path_value(
+            document,
+            &["plugins", "configs", "byteproxy", "claude_alias_enabled"],
+            serde_norway::Value::Bool(true),
+        )?;
+        changed |= set_core_yaml_path_value(
+            document,
+            &["plugins", "configs", "byteproxy", "claude_aliases"],
+            serde_norway::Value::Mapping(aliases),
+        )?;
+        changed |= set_core_yaml_path_value(
+            document,
+            &["plugins", "configs", "byteproxy", "claude_context_window"],
+            serde_norway::Value::Number(mappings.max_context_tokens.into()),
+        )?;
+        Ok(changed)
+    }).map(|updated| updated.unwrap_or_else(|| content.to_string()))
+}
 
 fn yaml_string(value: &serde_norway::Value) -> Option<String> {
     value

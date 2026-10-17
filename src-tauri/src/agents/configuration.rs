@@ -914,10 +914,11 @@ pub(crate) fn build_claude_desktop_profile(
         entries
             .iter()
             .map(|entry| {
+                let byteproxy = is_byteproxy_model(&entry.model, models);
                 let mut value = claude_desktop_inference_model(
                     entry.model_id(),
                     entry.source_or_alias(),
-                    entry.context_1m,
+                    entry.context_1m && !byteproxy,
                     models,
                 );
                 value["name"] = serde_json::json!(entry.model_id());

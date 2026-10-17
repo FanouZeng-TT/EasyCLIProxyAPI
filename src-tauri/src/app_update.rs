@@ -203,10 +203,11 @@ async fn resolve_app_update(
     let target = portable_update_target();
     let asset_catalog = manifest.full_assets.as_ref().unwrap_or(&manifest.assets);
     let asset = target.and_then(|(key, _)| asset_catalog.get(key)).cloned();
+    let installable_asset = asset.as_ref().is_some_and(portable_update_asset_install_supported);
     let portable_support = target
         .map(|(_, arch)| validate_local_portable_app_manifest(arch))
         .transpose()?;
-    let auto_update_supported = portable_support == Some(true) && asset.is_some();
+    let auto_update_supported = portable_support == Some(true) && installable_asset;
     let unsupported_reason = if auto_update_supported {
         None
     } else if portable_support != Some(true) {
@@ -491,7 +492,7 @@ pub(crate) fn portable_update_asset_platform(
     match portable_update_platform_key() {
         Some("windows") => Ok(("windows", "Windows", "zip")),
         Some("linux") => Ok(("linux", "Linux", "tar.gz")),
-        Some("darwin") => Ok(("darwin", "Darwin", "dmg")),
+        Some("darwin") => Ok(("darwin", "Darwin", "tar.gz")),
         _ => Err("The current platform does not support in-app automatic upgrades".to_string()),
     }
 }
@@ -533,6 +534,18 @@ fn validate_portable_update_asset_catalog(
         validate_portable_update_asset_fallbacks(asset, &tag, &expected_filenames)?;
     }
     Ok(())
+}
+
+pub(crate) fn portable_update_asset_install_supported(asset: &PortableUpdateAsset) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        asset.url.ends_with(".dmg")
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = asset;
+        true
+    }
 }
 
 pub(crate) fn validate_portable_update_asset(asset: &PortableUpdateAsset) -> Result<(), String> {

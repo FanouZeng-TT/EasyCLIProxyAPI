@@ -259,9 +259,9 @@ function createAgentStatuses() {
       ? {
           ...clone(claudeMappings),
           desktopModels: [
-            { id: 'claude-opus-5-cpa', alias: 'Claude Opus', model: 'claude-opus-4-6', enabled: true },
-            { id: 'claude-sonnet-5-cpa', alias: 'Claude Sonnet', model: 'claude-sonnet-4-6', enabled: true },
-            { id: 'claude-haiku-4-5-cpa', alias: 'Claude Haiku', model: 'claude-haiku-4-5', enabled: true },
+            { id: 'cpa-opus-4-5', alias: 'Claude Opus', model: 'claude-opus-4-6', enabled: true },
+            { id: 'cpa-sonnet-4-5', alias: 'Claude Sonnet', model: 'claude-sonnet-4-6', enabled: true },
+            { id: 'cpa-haiku-4-5', alias: 'Claude Haiku', model: 'claude-haiku-4-5', enabled: true },
           ],
         }
       : null,

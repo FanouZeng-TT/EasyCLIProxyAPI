@@ -70,12 +70,13 @@ pub(crate) async fn prepare_desktop_core_update(
         .await
         .map_err(agent_core_error)?;
     assign_available_claude_desktop_aliases(mappings, models, &before).map_err(agent_core_error)?;
-    let after = match ensure_claude_desktop_model_aliases_in_yaml(&before, mappings, models) {
+    let after = apply_byteproxy_claude_aliases(&before, mappings, models).map_err(agent_core_error)?;
+    let after = match ensure_claude_desktop_model_aliases_in_yaml(&after, mappings, models) {
         Ok(after) => after,
         Err(_) => {
             let definitions = fetch_oauth_model_definitions(config).await;
             ensure_claude_desktop_model_aliases_with_oauth_definitions_in_yaml(
-                &before,
+                &after,
                 mappings,
                 models,
                 &definitions,
@@ -262,14 +263,22 @@ async fn execute_template_plan(
             plan.mappings.clone(),
         )
     };
-    match &plan.core {
+    let desktop_context_window = plan
+        .mappings
+        .as_ref()
+        .map(|mappings| mappings.max_context_tokens);
+    let result = match &plan.core {
         Some((before, after)) => {
             commit_management_alias_config_changes(config, before, after, commit)
                 .await
                 .map_err(agent_core_error)
         }
         None => commit(),
+    }?;
+    if let Some(window) = desktop_context_window {
+        apply_claude_desktop_context_environment(window)?;
     }
+    Ok(result)
 }
 
 #[tauri::command]

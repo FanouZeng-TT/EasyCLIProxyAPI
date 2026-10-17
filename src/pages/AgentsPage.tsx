@@ -68,7 +68,7 @@ import {
 } from '../services/deepSeekHarnessLaunch';
 import type { ModelOption } from '../services/modelService';
 import { AgentModelPicker } from '../components/AgentModelPicker';
-import { claudeDesktopAliasSuggestions, claudeDesktopDefaultAliases, createDefaultDesktopModels, desktopAliasNotice, desktopEntryValidation, desktopModelEntries, desktopModelId, desktopModelValidation, isClaudeDesktopModel, selectedDesktopModelEntries, suffixCollidingDesktopAliases, type ClaudeDesktopModelMapping } from '../services/claudeDesktopModels';
+import { byteProxyClaudeRoutes, byteProxyRouteForIndex, byteProxyTargetModels, CLAUDE_DESKTOP_DEFAULT_CONTEXT_TOKENS, claudeDesktopAliasSuggestions, claudeDesktopDefaultAliases, createDefaultDesktopModels, desktopAliasNotice, desktopEntryValidation, desktopModelEntries, desktopModelId, desktopModelValidation, isByteProxyModel, isClaudeDesktopModel, selectedDesktopModelEntries, suffixCollidingDesktopAliases, type ClaudeDesktopModelMapping } from '../services/claudeDesktopModels';
 import { getCurrentLocale, translate, useI18n } from '../i18n';
 import { CodexSessionsPanel } from './CodexSessionsPanel';
 import { CodexModelCatalogDialog } from './CodexModelCatalogDialog';
@@ -235,7 +235,8 @@ const createClaudeModelMappingsByClient = (): Record<
   ClaudeModelMappings
 > => ({
   'claude-code': createClaudeModelMappings(),
-  'claude-desktop': { ...createClaudeModelMappings(), desktopModels: createDefaultDesktopModels() },
+  'claude-desktop': { ...createClaudeModelMappings(), maxContextTokens: CLAUDE_DESKTOP_DEFAULT_CONTEXT_TOKENS,
+    desktopModels: createDefaultDesktopModels() },
 });
 
 const createClaudeBooleanByClient = (): Record<ClaudeModelMappingClientId, boolean> => ({
@@ -893,11 +894,20 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
     () => filterAgentModelsByAlias(models, claudeCustomMapping),
     [claudeCustomMapping, models],
   );
+  const byteProxyModels = useMemo(() => byteProxyTargetModels(models), [models]);
+  const byteProxyAvailable = byteProxyModels.length > 0;
   const desktopEntries = claudeModelMappingsDraft.desktopModels ?? desktopModelEntries(claudeModelMappingsDraft);
+  const fixedByteProxyEntries = byteProxyAvailable && desktopEntries.length === byteProxyClaudeRoutes.length;
   const appliedDesktopEntries = activeStatus?.claudeDesktopModelMappings
     ? desktopModelEntries(activeStatus.claudeDesktopModelMappings) : [];
-  const resolvedDesktopEntries = suffixCollidingDesktopAliases(desktopEntries, models, appliedDesktopEntries);
+  const normalizedDesktopEntries = desktopEntries.map((entry, index) => byteProxyAvailable
+    && (isByteProxyModel(entry.model, models) || !entry.model.trim())
+    ? { ...entry, alias: byteProxyRouteForIndex(index), context1m: false }
+    : entry);
+  const resolvedDesktopEntries = suffixCollidingDesktopAliases(normalizedDesktopEntries, models, appliedDesktopEntries);
   const desktopValidation = desktopModelValidation(resolvedDesktopEntries, models, appliedDesktopEntries);
+  const byteProxyDesktopIncomplete = byteProxyAvailable && resolvedDesktopEntries.length === byteProxyClaudeRoutes.length
+    && resolvedDesktopEntries.some((entry) => !entry.model.trim() || !isByteProxyModel(entry.model, models));
 
   const loadPiProviderUpdateStatus = useCallback(async () => {
     const requestId = piUpdateRequestRef.current + 1;
@@ -1035,7 +1045,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
     });
   };
   const claudeMappingsReady = !isClaudeModelMappingClient
-    || (selected === 'claude-desktop' ? !desktopValidation : claudeMappingRoles.every((role) =>
+    || (selected === 'claude-desktop' ? !desktopValidation && !byteProxyDesktopIncomplete : claudeMappingRoles.every((role) =>
       Boolean(findAgentModel(models, claudeModelMappingsDraft[role.key])),
     ));
   const claudeCodeRuntimeSettingsReady = selected !== 'claude-code' || (
@@ -1044,6 +1054,9 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
     && claudeModelMappingsDraft.autoCompactPct >= 1
     && claudeModelMappingsDraft.autoCompactPct <= 100
   );
+  const claudeDesktopContextReady = selected !== 'claude-desktop'
+    || (claudeModelMappingsDraft.maxContextTokens >= 1_000
+      && claudeModelMappingsDraft.maxContextTokens <= 1_000_000);
   const canConfigureActiveClient = Boolean(
     activeStatus?.supportedPlatform
       && (activeStatus.installed || activeStatus.configExists),
@@ -1052,7 +1065,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
     canConfigureActiveClient
       && !modelLoading
       && (isClaudeModelMappingClient
-        ? claudeMappingsReady && claudeCodeRuntimeSettingsReady
+        ? claudeMappingsReady && claudeCodeRuntimeSettingsReady && claudeDesktopContextReady
         : selectedModelOption),
   );
   const activeLaunchTargets = activeStatus?.launchTargets ?? [];
@@ -1218,12 +1231,17 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
   const requireClaudeModelMappings = (): ClaudeModelMappings | null => {
     if (!isClaudeModelMappingClient) return null;
     if (selected === 'claude-desktop') {
-      if (desktopValidation) {
-        setModelSelectionError(t(`agents.claudeDesktopMapping.error.${desktopValidation}`));
+      if (desktopValidation || byteProxyDesktopIncomplete) {
+        if (byteProxyDesktopIncomplete) {
+          setModelSelectionError(t('agents.claudeDesktopMapping.error.byteProxyRequired'));
+        } else if (desktopValidation) {
+          setModelSelectionError(t(`agents.claudeDesktopMapping.error.${desktopValidation}`));
+        }
         return null;
       }
       const selectedEntries = selectedDesktopModelEntries(resolvedDesktopEntries);
       return { ...createClaudeModelMappings(), sonnet: selectedEntries[0].model.trim(),
+        maxContextTokens: claudeModelMappingsDraft.maxContextTokens,
         desktopModels: selectedEntries.map((entry) => ({ ...entry, model: entry.model.trim(), alias: entry.alias.trim() })) };
     }
     const resolved = {} as ClaudeModelMappings;
@@ -1841,7 +1859,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
           <button type="button" className="secondary-button compact-button" onClick={() => setDesktopHelpOpen(true)}>
             {t('agents.claudeDesktopMapping.help')}
           </button>
-          <button type="button" className="primary-button compact-button" disabled={busy || loading}
+          <button type="button" className="primary-button compact-button" disabled={busy || loading || fixedByteProxyEntries}
             onClick={() => editDesktopEntries([...desktopEntries, { model: '', alias: '', context1m: false }])}>
             {t('agents.claudeDesktopMapping.add')}
           </button>
@@ -1851,20 +1869,28 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
       <div className="agent-desktop-model-list">
         {resolvedDesktopEntries.map((entry, index) => {
           const entryError = entry.model.trim() ? desktopEntryValidation(entry) : null;
+          const byteProxy = isByteProxyModel(entry.model, models);
+          const byteProxyRoleRow = fixedByteProxyEntries || byteProxy;
           const aliasNotice = desktopAliasNotice(entry, resolvedDesktopEntries, models, appliedDesktopEntries);
-          const aliasSuffixed = desktopEntries[index].alias.trim().toLowerCase() !== entry.alias.trim().toLowerCase();
+          const aliasSuffixed = !byteProxyRoleRow && desktopEntries[index].alias.trim().toLowerCase() !== entry.alias.trim().toLowerCase();
           const isClaude = isClaudeDesktopModel(entry.model);
           return (
           <div className="agent-claude-desktop-mapping-row agent-desktop-model-row" key={index}>
             <div className="agent-desktop-model-fields">
               <div className="agent-desktop-model-field">
-                <span>{t('agents.claudeDesktopMapping.model')}</span>
-                <AgentModelPicker models={claudeMappingModels} value={entry.model} loading={modelLoading} error={modelError}
+                <span>{t(byteProxyRoleRow ? `agents.claudeDesktopMapping.${byteProxyClaudeRoutes[index]?.role ?? 'haiku'}` : 'agents.claudeDesktopMapping.model')}</span>
+                <AgentModelPicker models={byteProxyRoleRow ? byteProxyModels : claudeMappingModels} value={entry.model} loading={modelLoading} error={modelError}
                   allowCustomValue disabled={busy || loading || !activeStatus?.installed || !activeStatus.supportedPlatform}
-                  onChange={(model) => updateDesktopEntry(index, { model, ...(isClaudeDesktopModel(model) ? { alias: '' } : {}) })}
+                  onChange={(model) => {
+                    const byteProxyTarget = isByteProxyModel(model, models);
+                    const route = byteProxyRouteForIndex(index);
+                    updateDesktopEntry(index, byteProxyTarget
+                      ? { model, alias: route, context1m: false }
+                      : { model, ...(isClaudeDesktopModel(model) ? { alias: '' } : {}) });
+                  }}
                   onRefresh={refreshModels} />
               </div>
-              <div className="agent-desktop-model-field">
+              {!byteProxyRoleRow ? <div className="agent-desktop-model-field">
                 <span>{t('agents.claudeDesktopMapping.alias')}</span>
                 <AgentModelPicker
                   models={claudeDesktopAliasSuggestions.filter((alias) => !resolvedDesktopEntries.some((other, i) => i !== index && other.model.trim() && desktopModelId(other).toLowerCase() === alias))
@@ -1873,22 +1899,24 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
                   editable={{ label: t('agents.claudeDesktopMapping.alias'),
                     placeholder: t(isClaude ? 'agents.claudeDesktopMapping.claudeDefault' : 'agents.claudeDesktopMapping.noRename'), maxLength: 128 }}
                   onChange={(alias) => updateDesktopEntry(index, { alias })} />
-              </div>
+              </div> : null}
               <div className="agent-section-heading-actions agent-desktop-model-actions">
-                <label className="agent-claude-context-toggle" title={t('agents.claudeMapping.context1mHint')}>
+                {!byteProxyRoleRow ? <label className="agent-claude-context-toggle" title={t('agents.claudeMapping.context1mHint')}>
                   <span>{t('agents.claudeMapping.context1m')}</span>
                   <span className="switch-control"><input type="checkbox" checked={entry.context1m}
                     onChange={(event) => updateDesktopEntry(index, { context1m: event.currentTarget.checked })}
                     disabled={busy || loading} /><span className="switch-track" /></span>
-                </label>
-                <button type="button" className="icon-button quiet" aria-label={t('agents.claudeDesktopMapping.remove')}
+                </label> : null}
+                {!byteProxyRoleRow ? <button type="button" className="icon-button quiet" aria-label={t('agents.claudeDesktopMapping.remove')}
                   title={t('agents.claudeDesktopMapping.remove')} disabled={busy || loading}
                   onClick={() => editDesktopEntries(desktopEntries.filter((_, i) => i !== index))}>
                   <Trash2 size={16} />
-                </button>
+                </button> : null}
               </div>
             </div>
-            {aliasSuffixed
+            {byteProxyRoleRow
+              ? null
+              : aliasSuffixed
               ? <p className="agent-desktop-model-notice" role="status">{t('agents.claudeDesktopMapping.aliasSuffixed', { alias: entry.alias.trim() })}</p>
               : entryError && hasPendingChanges && !modelLoading
               ? <p className="agent-inline-message warning agent-desktop-model-notice" role="status">{t(`agents.claudeDesktopMapping.error.${entryError}`)}</p>
@@ -1906,6 +1934,16 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
           </div>
           );
         })}
+      </div>
+      <div className="agent-claude-code-number-field agent-desktop-context-window">
+        <span>{t('agents.claudeDesktopMapping.contextWindow')}</span>
+        <input type="number" min={1_000} max={1_000_000} step={1_000}
+          value={claudeModelMappingsDraft.maxContextTokens}
+          onChange={(event) => editClaudeModelMappings((current) => ({ ...current,
+            maxContextTokens: Math.trunc(event.currentTarget.valueAsNumber || 0) }))}
+          disabled={busy || loading || modelLoading}
+          aria-describedby="claude-desktop-context-hint" />
+        <small id="claude-desktop-context-hint">{t('agents.claudeDesktopMapping.contextWindowHint')}</small>
       </div>
       {desktopValidation === 'duplicate' && !modelLoading && hasPendingChanges
         ? <p className="agent-inline-message warning" role="status">{t(`agents.claudeDesktopMapping.error.${desktopValidation}`)}</p> : null}
