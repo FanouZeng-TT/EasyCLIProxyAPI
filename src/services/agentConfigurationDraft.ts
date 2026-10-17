@@ -66,6 +66,7 @@ export const sameAgentModelMappings = (
       return sameAgentModel(entry.model, other.model) && entry.alias.trim() === other.alias.trim()
         && Boolean(entry.context1m) === Boolean(other.context1m);
     })
+    && (left.maxContextTokens ?? 350_000) === (right.maxContextTokens ?? 350_000)
   : sameAgentModel(left.opus, right.opus)
   && sameAgentModel(left.sonnet, right.sonnet)
   && sameAgentModel(left.haiku, right.haiku)

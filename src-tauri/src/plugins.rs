@@ -157,6 +157,9 @@ async fn read_plugin_release(response: reqwest::Response) -> Result<String, Stri
         .ok_or_else(|| "Invalid GitHub release tag".to_string())
 }
 
+mod auto_update;
+pub(crate) use auto_update::start_byteproxy_auto_update;
+
 #[tauri::command]
 pub(crate) async fn get_plugin_support(
     gui_config_state: tauri::State<'_, GuiConfigState>,
