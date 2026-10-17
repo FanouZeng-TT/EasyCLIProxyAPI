@@ -275,9 +275,20 @@ jobs:
             --team-id "$APPLE_TEAM_ID" \
             --wait
           xcrun stapler staple "$output_dmg"
-      - name: Archive unsigned macOS portable release
+      - name: Archive unsigned macOS application bundle
         if: env.PACKAGE_RELEASE == 'true' && matrix.os == 'darwin' && env.APPLE_SIGNING_AVAILABLE != 'true'
-        run: tar -czf "${{ steps.package.outputs.stem }}.tar.gz" -C release "${{ steps.package.outputs.stem }}"
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "release/${{ steps.package.outputs.stem }}/portable-app.json" portable-app.json
+          bun tauri bundle --bundles app --ci --config src-tauri/tauri.dmg.conf.json
+          app_path="src-tauri/target/release/bundle/macos/EasyCLIProxyAPI.app"
+          resources_dir="$app_path/Contents/Resources"
+          test -d "$app_path"
+          test -s "$resources_dir/portable-app.json"
+          test -s "$resources_dir/core-version.txt"
+          COPYFILE_DISABLE=1 tar -czf "${{ steps.package.outputs.stem }}.tar.gz" \
+            -C "$(dirname "$app_path")" "$(basename "$app_path")"
       - name: Archive Linux release
         if: env.PACKAGE_RELEASE == 'true' && matrix.os == 'linux'
         run: tar -czf "${{ steps.package.outputs.stem }}.tar.gz" -C release "${{ steps.package.outputs.stem }}"
@@ -328,6 +339,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ needs.version.outputs.tag }}
           APPLE_SIGNING_AVAILABLE: ${{ secrets.APPLE_CERTIFICATE != '' }}
+          MACOS_UPDATE_ED25519_PRIVATE_KEY: ${{ secrets.MACOS_UPDATE_ED25519_PRIVATE_KEY }}
         run: |
           set -euo pipefail
           for platform in windows linux darwin; do

@@ -1,5 +1,7 @@
 use super::*;
 
+const MACOS_UPDATE_ED25519_PUBLIC_KEY_BASE64: &str = "G5wmTQdANzGpNZ94UjHHACPWxqVi3lHjeeUZyl8wa4k=";
+
 pub(crate) const PORTABLE_UPDATE_HELPER_ACK_FILE: &str = "update-helper-started.ack";
 const PORTABLE_UPDATE_HELPER_START_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -56,7 +58,10 @@ pub(crate) fn set_download_source(
         )
     };
     if candidate.source == VersionDownloadSource::Gitcode && !gitcode_version_source_available() {
-        return Err("This build does not include complete GitCode application and kernel mirror sources".to_string());
+        return Err(
+            "This build does not include complete GitCode application and kernel mirror sources"
+                .to_string(),
+        );
     }
     let config = gui_config_state.set_download_candidate(candidate)?;
     Ok(version_source_settings(&config))
@@ -113,7 +118,10 @@ pub(crate) fn set_prefer_gitcode_downloads(
         VersionDownloadSource::Github
     };
     if enabled && !gitcode_version_source_available() {
-        return Err("This build does not include complete GitCode application and kernel mirror sources".to_string());
+        return Err(
+            "This build does not include complete GitCode application and kernel mirror sources"
+                .to_string(),
+        );
     }
     let config = gui_config_state.set_download_source(source)?;
     Ok(version_source_settings(&config))
@@ -203,7 +211,9 @@ async fn resolve_app_update(
     let target = portable_update_target();
     let asset_catalog = manifest.full_assets.as_ref().unwrap_or(&manifest.assets);
     let asset = target.and_then(|(key, _)| asset_catalog.get(key)).cloned();
-    let installable_asset = asset.as_ref().is_some_and(portable_update_asset_install_supported);
+    let installable_asset = asset
+        .as_ref()
+        .is_some_and(portable_update_asset_install_supported);
     let portable_support = target
         .map(|(_, arch)| validate_local_portable_app_manifest(arch))
         .transpose()?;
@@ -213,7 +223,9 @@ async fn resolve_app_update(
     } else if portable_support != Some(true) {
         Some("This application is not a portable version that supports automatic upgrades. Manually download the first supported version".to_string())
     } else {
-        Some("The update manifest does not include the current platform or architecture".to_string())
+        Some(
+            "The update manifest does not include the current platform or architecture".to_string(),
+        )
     };
 
     let pending = if update_available && auto_update_supported {
@@ -274,7 +286,10 @@ pub(crate) async fn fetch_portable_update_manifest(
             Err(error) => failures.push(format!("{}: {error}", candidate.display_name())),
         }
     }
-    Err(format!("All application version check sources failed: {}", failures.join("; ")))
+    Err(format!(
+        "All application version check sources failed: {}",
+        failures.join("; ")
+    ))
 }
 
 pub(crate) async fn fetch_portable_update_manifest_from_gitcode(
@@ -506,7 +521,9 @@ fn validate_portable_update_asset_catalog(
     allow_windows_legacy: bool,
 ) -> Result<(), String> {
     if assets.len() != 2 {
-        return Err(format!("The application update manifest must include both {display_platform} architectures"));
+        return Err(format!(
+            "The application update manifest must include both {display_platform} architectures"
+        ));
     }
     let version = manifest.version.trim().trim_start_matches('v');
     let tag = format!("v{version}");
@@ -525,7 +542,9 @@ fn validate_portable_update_asset_catalog(
         let is_expected = asset.url == full_package_url
             || (allow_windows_legacy && asset.url == legacy_package_url);
         if !is_expected {
-            return Err(format!("Application update asset name does not match {key}"));
+            return Err(format!(
+                "Application update asset name does not match {key}"
+            ));
         }
         let mut expected_filenames = vec![full_package_name.as_str()];
         if allow_windows_legacy {
@@ -539,7 +558,7 @@ fn validate_portable_update_asset_catalog(
 pub(crate) fn portable_update_asset_install_supported(asset: &PortableUpdateAsset) -> bool {
     #[cfg(target_os = "macos")]
     {
-        asset.url.ends_with(".dmg")
+        asset.url.ends_with(".dmg") || (asset.url.ends_with(".tar.gz") && asset.signature.is_some())
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -549,7 +568,8 @@ pub(crate) fn portable_update_asset_install_supported(asset: &PortableUpdateAsse
 }
 
 pub(crate) fn validate_portable_update_asset(asset: &PortableUpdateAsset) -> Result<(), String> {
-    let url = reqwest::Url::parse(&asset.url).map_err(|_| "Invalid application update download URL".to_string())?;
+    let url = reqwest::Url::parse(&asset.url)
+        .map_err(|_| "Invalid application update download URL".to_string())?;
     if url.scheme() != "https"
         || url.host_str() != Some("github.com")
         || url.port().is_some()
@@ -567,6 +587,18 @@ pub(crate) fn validate_portable_update_asset(asset: &PortableUpdateAsset) -> Res
     let digest = asset.sha256.trim().to_ascii_lowercase();
     if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err("Invalid application update SHA-256".to_string());
+    }
+    if asset.url.ends_with(".tar.gz") && asset.url.contains("-Darwin-") {
+        let signature = asset
+            .signature
+            .as_deref()
+            .ok_or_else(|| "macOS TAR.GZ update is missing its Ed25519 signature".to_string())?;
+        let decoded =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, signature.trim())
+                .map_err(|_| "Invalid macOS update Ed25519 signature encoding".to_string())?;
+        if decoded.len() != 64 {
+            return Err("Invalid macOS update Ed25519 signature length".to_string());
+        }
     }
     Ok(())
 }
@@ -649,8 +681,8 @@ pub(crate) fn validate_local_portable_app_manifest(expected_arch: &str) -> Resul
     if !path.is_file() {
         return Ok(false);
     }
-    let contents =
-        fs::read_to_string(&path).map_err(|error| format!("Failed to read portable version marker: {error}"))?;
+    let contents = fs::read_to_string(&path)
+        .map_err(|error| format!("Failed to read portable version marker: {error}"))?;
     let manifest = serde_json::from_str::<PortableAppManifest>(&contents)
         .map_err(|error| format!("Failed to parse portable version marker: {error}"))?;
     Ok(manifest.schema_version == 1
@@ -777,8 +809,9 @@ pub(crate) async fn download_and_stage_portable_app_update(
                 .unwrap_or_default()
                 .as_nanos()
         ));
-        fs::create_dir_all(&work_dir)
-            .map_err(|error| format!("Failed to create temporary application update directory: {error}"))?;
+        fs::create_dir_all(&work_dir).map_err(|error| {
+            format!("Failed to create temporary application update directory: {error}")
+        })?;
         let archive_path = work_dir.join("update.zip");
         let result = async {
             download_portable_update_archive(
@@ -814,11 +847,13 @@ pub(crate) async fn download_and_stage_portable_app_update(
                 || package.manifest.platform != "windows"
                 || package.manifest.arch != pending.arch
             {
-                return Err("Application update package version or architecture mismatch".to_string());
+                return Err(
+                    "Application update package version or architecture mismatch".to_string(),
+                );
             }
 
-            let current_exe =
-                env::current_exe().map_err(|error| format!("Failed to read current executable path: {error}"))?;
+            let current_exe = env::current_exe()
+                .map_err(|error| format!("Failed to read current executable path: {error}"))?;
             let app_dir = current_exe
                 .parent()
                 .ok_or_else(|| "Current executable path has no parent directory".to_string())?;
@@ -863,8 +898,9 @@ pub(crate) async fn download_and_stage_portable_app_update(
     {
         validate_portable_update_asset(&pending.asset)?;
         let work_dir = portable_update_work_dir(&pending.version);
-        fs::create_dir_all(&work_dir)
-            .map_err(|error| format!("Failed to create temporary application update directory: {error}"))?;
+        fs::create_dir_all(&work_dir).map_err(|error| {
+            format!("Failed to create temporary application update directory: {error}")
+        })?;
         let archive_path = work_dir.join("update.tar.gz");
         let result = async {
             download_portable_update_archive(
@@ -889,13 +925,15 @@ pub(crate) async fn download_and_stage_portable_app_update(
                 || package.manifest.platform != "linux"
                 || package.manifest.arch != pending.arch
             {
-                return Err("Application update package version or architecture mismatch".to_string());
+                return Err(
+                    "Application update package version or architecture mismatch".to_string(),
+                );
             }
-            let core_archive_name = package
-                .core_archive_name
-                .ok_or_else(|| "Linux application update package is missing the bundled kernel".to_string())?;
-            let current_exe =
-                env::current_exe().map_err(|error| format!("Failed to read current executable path: {error}"))?;
+            let core_archive_name = package.core_archive_name.ok_or_else(|| {
+                "Linux application update package is missing the bundled kernel".to_string()
+            })?;
+            let current_exe = env::current_exe()
+                .map_err(|error| format!("Failed to read current executable path: {error}"))?;
             let app_dir = current_exe
                 .parent()
                 .ok_or_else(|| "Current executable path has no parent directory".to_string())?;
@@ -935,9 +973,15 @@ pub(crate) async fn download_and_stage_portable_app_update(
     {
         validate_portable_update_asset(&pending.asset)?;
         let work_dir = portable_update_work_dir(&pending.version);
-        fs::create_dir_all(&work_dir)
-            .map_err(|error| format!("Failed to create temporary application update directory: {error}"))?;
-        let archive_path = work_dir.join("update.dmg");
+        fs::create_dir_all(&work_dir).map_err(|error| {
+            format!("Failed to create temporary application update directory: {error}")
+        })?;
+        let is_tar_gz = pending.asset.url.ends_with(".tar.gz");
+        let archive_path = work_dir.join(if is_tar_gz {
+            "update.tar.gz"
+        } else {
+            "update.dmg"
+        });
         let result = async {
             download_portable_update_archive(
                 app,
@@ -949,6 +993,9 @@ pub(crate) async fn download_and_stage_portable_app_update(
             )
             .await?;
             ensure_portable_update_download(token, &archive_path, pending)?;
+            if is_tar_gz {
+                verify_macos_update_signature(&archive_path, &pending.asset)?;
+            }
             update_app_task(app, |task| {
                 task.cancellable = false;
                 task.phase = "staging".to_string();
@@ -956,10 +1003,14 @@ pub(crate) async fn download_and_stage_portable_app_update(
             });
 
             let staged_app = work_dir.join("staging").join("EasyCLIProxyAPI.app");
-            stage_macos_application_from_dmg(&archive_path, &work_dir, &staged_app)?;
+            if is_tar_gz {
+                stage_macos_application_from_tar_gz(&archive_path, &staged_app)?;
+            } else {
+                stage_macos_application_from_dmg(&archive_path, &work_dir, &staged_app)?;
+            }
             validate_macos_staged_application(&staged_app, pending)?;
-            let current_exe =
-                env::current_exe().map_err(|error| format!("Failed to read current executable path: {error}"))?;
+            let current_exe = env::current_exe()
+                .map_err(|error| format!("Failed to read current executable path: {error}"))?;
             let current_app = macos_application_bundle_from_executable(&current_exe)?;
             preflight_macos_update_directory(&current_app)?;
             let executable_relative_path = current_exe
@@ -979,6 +1030,7 @@ pub(crate) async fn download_and_stage_portable_app_update(
                 ack_path: work_dir.join("update-started.ack"),
                 work_dir: work_dir.clone(),
                 target_version: pending.version.clone(),
+                trusted_by_ed25519: is_tar_gz,
             };
             let helper_path = macos_update_helper_path(&current_exe);
             launch_portable_update_helper(app, &helper_path, &work_dir, &descriptor).await
@@ -1025,6 +1077,39 @@ fn ensure_portable_update_download(
 }
 
 #[cfg(any(target_os = "macos", test))]
+pub(crate) fn verify_macos_update_signature(
+    archive_path: &Path,
+    asset: &PortableUpdateAsset,
+) -> Result<(), String> {
+    use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+
+    let public_key = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        MACOS_UPDATE_ED25519_PUBLIC_KEY_BASE64,
+    )
+    .map_err(|_| "Invalid embedded macOS update public key".to_string())?;
+    let public_key: [u8; 32] = public_key
+        .try_into()
+        .map_err(|_| "Invalid embedded macOS update public key length".to_string())?;
+    let signature = asset
+        .signature
+        .as_deref()
+        .ok_or_else(|| "macOS update is missing its Ed25519 signature".to_string())?;
+    let signature =
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, signature.trim())
+            .map_err(|_| "Invalid macOS update Ed25519 signature encoding".to_string())?;
+    let signature = Signature::from_slice(&signature)
+        .map_err(|_| "Invalid macOS update Ed25519 signature length".to_string())?;
+    let contents = fs::read(archive_path).map_err(|error| {
+        format!("Failed to read macOS update package for signature verification: {error}")
+    })?;
+    VerifyingKey::from_bytes(&public_key)
+        .map_err(|_| "Invalid embedded macOS update public key".to_string())?
+        .verify(&contents, &signature)
+        .map_err(|_| "macOS update Ed25519 signature verification failed".to_string())
+}
+
+#[cfg(any(target_os = "macos", test))]
 pub(crate) fn macos_update_helper_path(current_exe: &Path) -> PathBuf {
     current_exe.to_path_buf()
 }
@@ -1039,8 +1124,9 @@ async fn launch_portable_update_helper<T: Serialize>(
     let descriptor_path = work_dir.join("update-descriptor.json");
     fs::write(
         &descriptor_path,
-        serde_json::to_vec_pretty(descriptor)
-            .map_err(|error| format!("Failed to serialize application update descriptor: {error}"))?,
+        serde_json::to_vec_pretty(descriptor).map_err(|error| {
+            format!("Failed to serialize application update descriptor: {error}")
+        })?,
     )
     .map_err(|error| format!("Failed to write application update descriptor: {error}"))?;
     let helper_ack_path = portable_update_helper_ack_path(work_dir);
@@ -1082,7 +1168,9 @@ pub(crate) fn acknowledge_portable_update_helper_start(work_dir: &Path) -> Resul
         portable_update_helper_ack_path(work_dir),
         std::process::id().to_string(),
     )
-    .map_err(|error| format!("Failed to write application update helper startup confirmation: {error}"))
+    .map_err(|error| {
+        format!("Failed to write application update helper startup confirmation: {error}")
+    })
 }
 
 #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
@@ -1100,7 +1188,9 @@ async fn wait_for_portable_update_helper_start(
             .try_wait()
             .map_err(|error| format!("Failed to check application update helper status: {error}"))?
         {
-            return Err(format!("Application update helper failed to start; exit status: {status}"));
+            return Err(format!(
+                "Application update helper failed to start; exit status: {status}"
+            ));
         }
         if Instant::now() >= deadline {
             let _ = child.kill();
@@ -1159,7 +1249,10 @@ pub(crate) async fn download_portable_update_archive(
             Err(error) => failures.push(error),
         }
     }
-    Err(format!("All application update download sources failed: {}", failures.join("; ")))
+    Err(format!(
+        "All application update download sources failed: {}",
+        failures.join("; ")
+    ))
 }
 
 pub(crate) fn portable_update_download_urls(
@@ -1222,20 +1315,24 @@ pub(crate) async fn download_portable_update_archive_url(
         .error_for_status()
         .map_err(|error| format!("Failed to download application update: {error}"))?;
     let mut stream = response.bytes_stream();
-    let mut file =
-        File::create(destination).map_err(|error| format!("Failed to create temporary application update file: {error}"))?;
+    let mut file = File::create(destination)
+        .map_err(|error| format!("Failed to create temporary application update file: {error}"))?;
     let mut downloaded = 0_u64;
     let mut progress = crate::progress::ProgressThrottle::default();
     while let Some(chunk) = stream.next().await {
         if token.is_cancelled() {
             return Err("Application update download canceled".to_string());
         }
-        let chunk = chunk.map_err(|error| format!("Failed to read application update download data: {error}"))?;
-        file.write_all(&chunk)
-            .map_err(|error| format!("Failed to write temporary application update file: {error}"))?;
+        let chunk = chunk
+            .map_err(|error| format!("Failed to read application update download data: {error}"))?;
+        file.write_all(&chunk).map_err(|error| {
+            format!("Failed to write temporary application update file: {error}")
+        })?;
         downloaded = downloaded.saturating_add(chunk.len() as u64);
         if downloaded > pending.asset.size_bytes {
-            return Err("Application update package exceeds the size declared in the manifest".to_string());
+            return Err(
+                "Application update package exceeds the size declared in the manifest".to_string(),
+            );
         }
         if progress.ready(Instant::now(), downloaded == pending.asset.size_bytes) {
             update_app_task(app, |task| {
@@ -1292,11 +1389,13 @@ pub(crate) fn extract_portable_update_archive(
     archive_path: &Path,
     staging_dir: &Path,
 ) -> Result<PortablePackagePayload, String> {
-    fs::create_dir_all(staging_dir)
-        .map_err(|error| format!("Failed to create application update staging directory: {error}"))?;
-    let file = File::open(archive_path).map_err(|error| format!("Failed to open application update package: {error}"))?;
-    let mut archive =
-        ZipArchive::new(file).map_err(|error| format!("Failed to read application update ZIP: {error}"))?;
+    fs::create_dir_all(staging_dir).map_err(|error| {
+        format!("Failed to create application update staging directory: {error}")
+    })?;
+    let file = File::open(archive_path)
+        .map_err(|error| format!("Failed to open application update package: {error}"))?;
+    let mut archive = ZipArchive::new(file)
+        .map_err(|error| format!("Failed to read application update ZIP: {error}"))?;
     let archive_names = archive
         .file_names()
         .map(|name| name.replace('\\', "/"))
@@ -1340,13 +1439,18 @@ pub(crate) fn extract_portable_update_archive(
             let root = components
                 .next()
                 .filter(|value| !value.is_empty())
-                .ok_or_else(|| "Application update package is missing a top-level directory".to_string())?;
+                .ok_or_else(|| {
+                    "Application update package is missing a top-level directory".to_string()
+                })?;
             relative = components.collect::<Vec<_>>();
             if relative.is_empty() || relative.iter().any(|value| value.is_empty()) {
                 return Err("Invalid application update package directory structure".to_string());
             }
             if package_root.as_deref().is_some_and(|value| value != root) {
-                return Err("Application update package must contain exactly one top-level directory".to_string());
+                return Err(
+                    "Application update package must contain exactly one top-level directory"
+                        .to_string(),
+                );
             }
             package_root.get_or_insert_with(|| root.to_string());
             relative_name = relative.join("/");
@@ -1368,7 +1472,10 @@ pub(crate) fn extract_portable_update_archive(
             }
             CORE_VERSION_FILE if !seen_core_version => {
                 if entry.size() == 0 || entry.size() > 1024 {
-                    return Err("Invalid bundled kernel version file size in application update package".to_string());
+                    return Err(
+                        "Invalid bundled kernel version file size in application update package"
+                            .to_string(),
+                    );
                 }
                 seen_core_version = true;
                 staging_dir.join(CORE_VERSION_FILE)
@@ -1384,18 +1491,26 @@ pub(crate) fn extract_portable_update_archive(
                     || entry.size() == 0
                     || entry.size() > 512 * 1024 * 1024
                 {
-                    return Err("Invalid bundled kernel archive in application update package".to_string());
+                    return Err(
+                        "Invalid bundled kernel archive in application update package".to_string(),
+                    );
                 }
                 core_archive_name = Some(filename.to_string());
                 let core_staging_dir = staging_dir.join("cpa-core");
-                fs::create_dir_all(&core_staging_dir)
-                    .map_err(|error| format!("Failed to create bundled kernel staging directory: {error}"))?;
+                fs::create_dir_all(&core_staging_dir).map_err(|error| {
+                    format!("Failed to create bundled kernel staging directory: {error}")
+                })?;
                 core_staging_dir.join(filename)
             }
-            _ => return Err(format!("Application update package contains an unknown file: {name}")),
+            _ => {
+                return Err(format!(
+                    "Application update package contains an unknown file: {name}"
+                ))
+            }
         };
-        let mut output = File::create(&destination)
-            .map_err(|error| format!("Failed to create application update staging file: {error}"))?;
+        let mut output = File::create(&destination).map_err(|error| {
+            format!("Failed to create application update staging file: {error}")
+        })?;
         io::copy(&mut entry, &mut output)
             .map_err(|error| format!("Failed to extract application update file: {error}"))?;
         output
@@ -1442,7 +1557,10 @@ pub(crate) fn extract_portable_update_archive(
         let expected_core_archive =
             format!("CLIProxyAPI_{core_version}_windows_{}.zip", manifest.arch);
         if core_archive_name.as_deref() != Some(expected_core_archive.as_str()) {
-            return Err("Bundled kernel version or architecture mismatch in application update package".to_string());
+            return Err(
+                "Bundled kernel version or architecture mismatch in application update package"
+                    .to_string(),
+            );
         }
     }
     Ok(PortablePackagePayload {
@@ -1456,9 +1574,11 @@ pub(crate) fn extract_portable_update_tar_gz(
     archive_path: &Path,
     staging_dir: &Path,
 ) -> Result<PortablePackagePayload, String> {
-    fs::create_dir_all(staging_dir)
-        .map_err(|error| format!("Failed to create application update staging directory: {error}"))?;
-    let file = File::open(archive_path).map_err(|error| format!("Failed to open application update package: {error}"))?;
+    fs::create_dir_all(staging_dir).map_err(|error| {
+        format!("Failed to create application update staging directory: {error}")
+    })?;
+    let file = File::open(archive_path)
+        .map_err(|error| format!("Failed to open application update package: {error}"))?;
     let decoder = GzDecoder::new(file);
     let mut archive = Archive::new(decoder);
     let entries = archive
@@ -1472,13 +1592,16 @@ pub(crate) fn extract_portable_update_tar_gz(
     let mut regular_file_count = 0_u32;
 
     for entry in entries {
-        let mut entry = entry.map_err(|error| format!("Failed to read application update entry: {error}"))?;
+        let mut entry =
+            entry.map_err(|error| format!("Failed to read application update entry: {error}"))?;
         let entry_type = entry.header().entry_type();
         if entry_type.is_dir() {
             continue;
         }
         if !entry_type.is_file() {
-            return Err("Application update package cannot contain links or special files".to_string());
+            return Err(
+                "Application update package cannot contain links or special files".to_string(),
+            );
         }
         let entry_path = entry
             .path()
@@ -1498,7 +1621,10 @@ pub(crate) fn extract_portable_update_tar_gz(
         }
         let root = &components[0];
         if package_root.as_deref().is_some_and(|value| value != root) {
-            return Err("Application update package must contain exactly one top-level directory".to_string());
+            return Err(
+                "Application update package must contain exactly one top-level directory"
+                    .to_string(),
+            );
         }
         package_root.get_or_insert_with(|| root.clone());
         let relative = &components[1..];
@@ -1522,7 +1648,10 @@ pub(crate) fn extract_portable_update_tar_gz(
             }
             CORE_VERSION_FILE if !seen_core_version => {
                 if size == 0 || size > 1024 {
-                    return Err("Invalid bundled kernel version file size in application update package".to_string());
+                    return Err(
+                        "Invalid bundled kernel version file size in application update package"
+                            .to_string(),
+                    );
                 }
                 seen_core_version = true;
                 staging_dir.join(CORE_VERSION_FILE)
@@ -1538,18 +1667,26 @@ pub(crate) fn extract_portable_update_tar_gz(
                     || size == 0
                     || size > 512 * 1024 * 1024
                 {
-                    return Err("Invalid bundled kernel archive in application update package".to_string());
+                    return Err(
+                        "Invalid bundled kernel archive in application update package".to_string(),
+                    );
                 }
                 core_archive_name = Some(filename.clone());
                 let core_staging_dir = staging_dir.join("cpa-core");
-                fs::create_dir_all(&core_staging_dir)
-                    .map_err(|error| format!("Failed to create bundled kernel staging directory: {error}"))?;
+                fs::create_dir_all(&core_staging_dir).map_err(|error| {
+                    format!("Failed to create bundled kernel staging directory: {error}")
+                })?;
                 core_staging_dir.join(filename)
             }
-            _ => return Err(format!("Application update package contains an unknown file: {relative_name}")),
+            _ => {
+                return Err(format!(
+                    "Application update package contains an unknown file: {relative_name}"
+                ))
+            }
         };
-        let mut output = File::create(&destination)
-            .map_err(|error| format!("Failed to create application update staging file: {error}"))?;
+        let mut output = File::create(&destination).map_err(|error| {
+            format!("Failed to create application update staging file: {error}")
+        })?;
         io::copy(&mut entry, &mut output)
             .map_err(|error| format!("Failed to extract application update file: {error}"))?;
         output
@@ -1602,7 +1739,10 @@ pub(crate) fn extract_portable_update_tar_gz(
     let expected_core_archive =
         format!("CLIProxyAPI_{core_version}_linux_{}.tar.gz", manifest.arch);
     if core_archive_name.as_deref() != Some(expected_core_archive.as_str()) {
-        return Err("Bundled kernel version or architecture mismatch in application update package".to_string());
+        return Err(
+            "Bundled kernel version or architecture mismatch in application update package"
+                .to_string(),
+        );
     }
     Ok(PortablePackagePayload {
         manifest,
@@ -1625,7 +1765,10 @@ pub(crate) fn stage_current_portable_core_payload(
             .split('.')
             .all(|segment| !segment.is_empty() && segment.bytes().all(|byte| byte.is_ascii_digit()))
     {
-        return Err("Current bundled kernel version is invalid and cannot support legacy update packages".to_string());
+        return Err(
+            "Current bundled kernel version is invalid and cannot support legacy update packages"
+                .to_string(),
+        );
     }
     let core_archive_name = format!("CLIProxyAPI_{core_version}_windows_{arch}.zip");
     let current_core_archive = app_dir.join("cpa-core").join(&core_archive_name);
@@ -1635,8 +1778,9 @@ pub(crate) fn stage_current_portable_core_payload(
         ));
     }
     let staged_core_dir = staging_dir.join("cpa-core");
-    fs::create_dir_all(&staged_core_dir)
-        .map_err(|error| format!("Failed to create legacy update compatibility staging directory: {error}"))?;
+    fs::create_dir_all(&staged_core_dir).map_err(|error| {
+        format!("Failed to create legacy update compatibility staging directory: {error}")
+    })?;
     fs::copy(&current_core_version, staging_dir.join(CORE_VERSION_FILE))
         .map_err(|error| format!("Failed to stage current kernel version file: {error}"))?;
     fs::copy(
@@ -1656,15 +1800,20 @@ pub(crate) fn preflight_portable_update_directory(app_dir: &Path) -> Result<(), 
         ".easycliproxy-update-write-test-{}",
         std::process::id()
     ));
-    fs::write(&probe, b"update-write-test")
-        .map_err(|error| format!("Application directory is not writable; automatic upgrade is unavailable: {error}"))?;
-    fs::remove_file(&probe).map_err(|error| format!("Failed to clean up application update write test: {error}"))?;
+    fs::write(&probe, b"update-write-test").map_err(|error| {
+        format!("Application directory is not writable; automatic upgrade is unavailable: {error}")
+    })?;
+    fs::remove_file(&probe)
+        .map_err(|error| format!("Failed to clean up application update write test: {error}"))?;
     let core_probe = app_dir.join("cpa-core").join(format!(
         ".easycliproxy-update-write-test-{}",
         std::process::id()
     ));
-    fs::write(&core_probe, b"update-write-test")
-        .map_err(|error| format!("Bundled kernel directory is not writable; automatic upgrade is unavailable: {error}"))?;
+    fs::write(&core_probe, b"update-write-test").map_err(|error| {
+        format!(
+            "Bundled kernel directory is not writable; automatic upgrade is unavailable: {error}"
+        )
+    })?;
     fs::remove_file(&core_probe)
         .map_err(|error| format!("Failed to clean up bundled kernel update write test: {error}"))?;
     Ok(())
@@ -1687,7 +1836,9 @@ pub(crate) fn wait_for_windows_process_exit(
         if error.raw_os_error() == Some(87) {
             return Ok(());
         }
-        return Err(format!("Failed to open legacy application process: {error}"));
+        return Err(format!(
+            "Failed to open legacy application process: {error}"
+        ));
     }
     let timeout_ms = timeout.as_millis().min(u32::MAX as u128) as u32;
     let result = unsafe { WaitForSingleObject(handle, timeout_ms) };
@@ -1723,7 +1874,9 @@ pub(crate) fn wait_for_portable_parent_exit(pid: u32, timeout: Duration) -> Resu
                 return Ok(());
             }
             if error.raw_os_error() != Some(libc::EPERM) {
-                return Err(format!("Failed to check legacy application process: {error}"));
+                return Err(format!(
+                    "Failed to check legacy application process: {error}"
+                ));
             }
         }
         if Instant::now() >= deadline {
@@ -1772,8 +1925,9 @@ pub(crate) fn validate_portable_update_descriptor(
     {
         return Err("Invalid application update bundled kernel target path".to_string());
     }
-    let canonical_work_dir = fs::canonicalize(&descriptor.work_dir)
-        .map_err(|error| format!("Failed to read application update temporary directory: {error}"))?;
+    let canonical_work_dir = fs::canonicalize(&descriptor.work_dir).map_err(|error| {
+        format!("Failed to read application update temporary directory: {error}")
+    })?;
     let canonical_temp_dir = fs::canonicalize(env::temp_dir())
         .map_err(|error| format!("Failed to read system temporary directory: {error}"))?;
     if !canonical_work_dir.starts_with(&canonical_temp_dir)
@@ -1916,19 +2070,25 @@ pub(crate) fn replace_portable_update_files(
         .map_err(|error| format!("Failed to prepare new application executable: {error}"))?;
     if let Err(error) = fs::copy(&descriptor.staged_manifest, &replacement_manifest) {
         let _ = fs::remove_file(&replacement_exe);
-        return Err(format!("Failed to prepare new portable version marker: {error}"));
+        return Err(format!(
+            "Failed to prepare new portable version marker: {error}"
+        ));
     }
     if let Err(error) = fs::copy(&descriptor.staged_core_version, &replacement_core_version) {
         let _ = fs::remove_file(&replacement_exe);
         let _ = fs::remove_file(&replacement_manifest);
-        return Err(format!("Failed to prepare new kernel version file: {error}"));
+        return Err(format!(
+            "Failed to prepare new kernel version file: {error}"
+        ));
     }
     if descriptor.install_core_archive {
         if let Err(error) = fs::copy(&descriptor.staged_core_archive, &replacement_core_archive) {
             let _ = fs::remove_file(&replacement_exe);
             let _ = fs::remove_file(&replacement_manifest);
             let _ = fs::remove_file(&replacement_core_version);
-            return Err(format!("Failed to prepare new bundled kernel archive: {error}"));
+            return Err(format!(
+                "Failed to prepare new bundled kernel archive: {error}"
+            ));
         }
     }
 
@@ -1940,7 +2100,9 @@ pub(crate) fn replace_portable_update_files(
         let _ = fs::remove_file(&replacement_manifest);
         let _ = fs::remove_file(&replacement_core_version);
         let _ = fs::remove_file(&replacement_core_archive);
-        return Err(format!("Failed to back up old application version: {error}"));
+        return Err(format!(
+            "Failed to back up old application version: {error}"
+        ));
     }
     if let Err(error) = fs::rename(&descriptor.current_manifest, &descriptor.backup_manifest) {
         let _ = fs::rename(&descriptor.backup_exe, &descriptor.current_exe);
@@ -1948,7 +2110,9 @@ pub(crate) fn replace_portable_update_files(
         let _ = fs::remove_file(&replacement_manifest);
         let _ = fs::remove_file(&replacement_core_version);
         let _ = fs::remove_file(&replacement_core_archive);
-        return Err(format!("Failed to back up portable version marker: {error}"));
+        return Err(format!(
+            "Failed to back up portable version marker: {error}"
+        ));
     }
     if let Err(error) = fs::rename(
         &descriptor.current_core_version,
@@ -1960,7 +2124,9 @@ pub(crate) fn replace_portable_update_files(
         let _ = fs::remove_file(&replacement_manifest);
         let _ = fs::remove_file(&replacement_core_version);
         let _ = fs::remove_file(&replacement_core_archive);
-        return Err(format!("Failed to back up old kernel version file: {error}"));
+        return Err(format!(
+            "Failed to back up old kernel version file: {error}"
+        ));
     }
 
     let replace_result = (|| -> Result<(), String> {
@@ -1971,8 +2137,9 @@ pub(crate) fn replace_portable_update_files(
         fs::rename(&replacement_core_version, &descriptor.current_core_version)
             .map_err(|error| format!("Failed to replace kernel version file: {error}"))?;
         if descriptor.install_core_archive {
-            fs::rename(&replacement_core_archive, &descriptor.target_core_archive)
-                .map_err(|error| format!("Failed to install new bundled kernel archive: {error}"))?;
+            fs::rename(&replacement_core_archive, &descriptor.target_core_archive).map_err(
+                |error| format!("Failed to install new bundled kernel archive: {error}"),
+            )?;
         }
         Ok(())
     })();
@@ -2041,7 +2208,8 @@ pub(crate) fn cleanup_portable_update_payload(
 #[cfg(any(windows, target_os = "linux"))]
 pub(crate) fn run_portable_update_helper(descriptor_path: &Path) -> Result<(), String> {
     let descriptor = serde_json::from_slice::<PortableUpdateDescriptor>(
-        &fs::read(descriptor_path).map_err(|error| format!("Failed to read application update descriptor: {error}"))?,
+        &fs::read(descriptor_path)
+            .map_err(|error| format!("Failed to read application update descriptor: {error}"))?,
     )
     .map_err(|error| format!("Failed to parse application update descriptor: {error}"))?;
     validate_portable_update_descriptor(descriptor_path, &descriptor)?;
@@ -2139,6 +2307,96 @@ fn run_macos_update_command(command: &mut Command, action: &str) -> Result<(), S
     Err(format!("Failed to {action} ({}): {details}", output.status))
 }
 
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn stage_macos_application_from_tar_gz(
+    archive_path: &Path,
+    staged_app: &Path,
+) -> Result<(), String> {
+    let staging_parent = staged_app
+        .parent()
+        .ok_or_else(|| "Invalid application update staging path".to_string())?;
+    fs::create_dir_all(staging_parent).map_err(|error| {
+        format!("Failed to create application update staging directory: {error}")
+    })?;
+    let file = File::open(archive_path)
+        .map_err(|error| format!("Failed to open macOS application update package: {error}"))?;
+    let mut archive = Archive::new(GzDecoder::new(file));
+    let entries = archive
+        .entries()
+        .map_err(|error| format!("Failed to read macOS application update TAR.GZ: {error}"))?;
+    let mut file_count = 0_u32;
+    let mut total_size = 0_u64;
+
+    for entry in entries {
+        let mut entry =
+            entry.map_err(|error| format!("Failed to read macOS update entry: {error}"))?;
+        let entry_type = entry.header().entry_type();
+        if !entry_type.is_file() && !entry_type.is_dir() {
+            return Err(
+                "macOS application update package cannot contain links or special files"
+                    .to_string(),
+            );
+        }
+        let path = entry
+            .path()
+            .map_err(|error| format!("Failed to read macOS update entry path: {error}"))?;
+        let mut components = path.components();
+        if components.next()
+            != Some(Component::Normal(std::ffi::OsStr::new(
+                "EasyCLIProxyAPI.app",
+            )))
+        {
+            return Err(
+                "macOS application update package must contain only EasyCLIProxyAPI.app"
+                    .to_string(),
+            );
+        }
+        let relative = components.collect::<PathBuf>();
+        if relative
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+        {
+            return Err("macOS application update package contains an unsafe path".to_string());
+        }
+        if relative.as_os_str().is_empty() {
+            if !entry_type.is_dir() {
+                return Err("Invalid macOS application update bundle root".to_string());
+            }
+            continue;
+        }
+        let destination = staged_app.join(relative);
+        if entry_type.is_dir() {
+            fs::create_dir_all(&destination)
+                .map_err(|error| format!("Failed to create macOS update directory: {error}"))?;
+            continue;
+        }
+        file_count = file_count.saturating_add(1);
+        total_size = total_size.saturating_add(entry.size());
+        if file_count > 20_000 || total_size > 1024 * 1024 * 1024 {
+            return Err("macOS application update package exceeds safety limits".to_string());
+        }
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("Failed to create macOS update directory: {error}"))?;
+        }
+        let mut output = File::create(&destination)
+            .map_err(|error| format!("Failed to create macOS update file: {error}"))?;
+        std::io::copy(&mut entry, &mut output)
+            .map_err(|error| format!("Failed to extract macOS update file: {error}"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = entry.header().mode().unwrap_or(0o644) & 0o777;
+            fs::set_permissions(&destination, fs::Permissions::from_mode(mode))
+                .map_err(|error| format!("Failed to preserve macOS update permissions: {error}"))?;
+        }
+    }
+    if file_count == 0 || !staged_app.is_dir() {
+        return Err("macOS application update package is missing EasyCLIProxyAPI.app".to_string());
+    }
+    Ok(())
+}
+
 #[cfg(target_os = "macos")]
 pub(crate) fn stage_macos_application_from_dmg(
     dmg_path: &Path,
@@ -2163,7 +2421,8 @@ pub(crate) fn stage_macos_application_from_dmg_with_commands(
     mut wait: impl FnMut(Duration),
 ) -> Result<(), String> {
     let mount_dir = work_dir.join("mount");
-    fs::create_dir_all(&mount_dir).map_err(|error| format!("Failed to create DMG mount directory: {error}"))?;
+    fs::create_dir_all(&mount_dir)
+        .map_err(|error| format!("Failed to create DMG mount directory: {error}"))?;
     let mut attach = Command::new("hdiutil");
     attach
         .arg("attach")
@@ -2180,8 +2439,9 @@ pub(crate) fn stage_macos_application_from_dmg_with_commands(
         let staging_parent = staged_app
             .parent()
             .ok_or_else(|| "Invalid application update staging path".to_string())?;
-        fs::create_dir_all(staging_parent)
-            .map_err(|error| format!("Failed to create application update staging directory: {error}"))?;
+        fs::create_dir_all(staging_parent).map_err(|error| {
+            format!("Failed to create application update staging directory: {error}")
+        })?;
         let mut ditto = Command::new("ditto");
         ditto.arg(&source_app).arg(staged_app);
         run(&mut ditto, "Stage new macOS application")?;
@@ -2194,7 +2454,10 @@ pub(crate) fn stage_macos_application_from_dmg_with_commands(
         gatekeeper
             .args(["--assess", "--type", "execute", "--verbose=2"])
             .arg(staged_app);
-        run(&mut gatekeeper, "Verify new macOS application system trust status")
+        run(
+            &mut gatekeeper,
+            "Verify new macOS application system trust status",
+        )
     })();
 
     match eject_macos_update_dmg_with_commands(&mount_dir, &mut run, &mut wait) {
@@ -2291,15 +2554,21 @@ pub(crate) fn macos_application_bundle_from_executable(
     let macos_dir = executable
         .parent()
         .filter(|path| path.file_name().and_then(|name| name.to_str()) == Some("MacOS"))
-        .ok_or_else(|| "Current executable is not inside a standard macOS application bundle".to_string())?;
+        .ok_or_else(|| {
+            "Current executable is not inside a standard macOS application bundle".to_string()
+        })?;
     let contents_dir = macos_dir
         .parent()
         .filter(|path| path.file_name().and_then(|name| name.to_str()) == Some("Contents"))
-        .ok_or_else(|| "Current executable is not inside a standard macOS application bundle".to_string())?;
+        .ok_or_else(|| {
+            "Current executable is not inside a standard macOS application bundle".to_string()
+        })?;
     let app = contents_dir
         .parent()
         .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("app"))
-        .ok_or_else(|| "Current executable is not inside a standard macOS application bundle".to_string())?;
+        .ok_or_else(|| {
+            "Current executable is not inside a standard macOS application bundle".to_string()
+        })?;
     Ok(app.to_path_buf())
 }
 
@@ -2317,7 +2586,8 @@ pub(crate) fn preflight_macos_update_directory(current_app: &Path) -> Result<(),
     ));
     fs::write(&probe, b"update-write-test")
         .map_err(|error| format!("macOS application directory is not writable; automatic upgrade is unavailable: {error}"))?;
-    fs::remove_file(&probe).map_err(|error| format!("Failed to clean up application update write test: {error}"))
+    fs::remove_file(&probe)
+        .map_err(|error| format!("Failed to clean up application update write test: {error}"))
 }
 
 #[cfg(target_os = "macos")]
@@ -2352,8 +2622,9 @@ pub(crate) fn validate_macos_update_descriptor(
     {
         return Err("Invalid macOS application update target path".to_string());
     }
-    let canonical_work_dir = fs::canonicalize(&descriptor.work_dir)
-        .map_err(|error| format!("Failed to read application update temporary directory: {error}"))?;
+    let canonical_work_dir = fs::canonicalize(&descriptor.work_dir).map_err(|error| {
+        format!("Failed to read application update temporary directory: {error}")
+    })?;
     let canonical_temp_dir = fs::canonicalize(env::temp_dir())
         .map_err(|error| format!("Failed to read system temporary directory: {error}"))?;
     if !canonical_work_dir.starts_with(&canonical_temp_dir)
@@ -2421,34 +2692,41 @@ pub(crate) fn replace_macos_application(descriptor: &MacosUpdateDescriptor) -> R
     let replacement_app = app_parent.join(".EasyCLIProxyAPI-update-new.app");
     let legacy_replacement_app = app_parent.join(".EasyCLIProxyAPI.app.update-new");
     if legacy_replacement_app.exists() {
-        fs::remove_dir_all(&legacy_replacement_app)
-            .map_err(|error| format!("Failed to clean up legacy macOS update staging data: {error}"))?;
+        fs::remove_dir_all(&legacy_replacement_app).map_err(|error| {
+            format!("Failed to clean up legacy macOS update staging data: {error}")
+        })?;
     }
     if replacement_app.exists() {
-        fs::remove_dir_all(&replacement_app)
-            .map_err(|error| format!("Failed to clean up old macOS update staging data: {error}"))?;
+        fs::remove_dir_all(&replacement_app).map_err(|error| {
+            format!("Failed to clean up old macOS update staging data: {error}")
+        })?;
     }
     let mut ditto = Command::new("ditto");
     ditto.arg(&descriptor.staged_app).arg(&replacement_app);
     run_macos_update_command(&mut ditto, "Prepare new macOS application")?;
-    let mut codesign = Command::new("codesign");
-    codesign
-        .args(["--verify", "--deep", "--strict"])
-        .arg(&replacement_app);
-    if let Err(error) = run_macos_update_command(&mut codesign, "Verify replacement macOS application signature")
-    {
-        let _ = fs::remove_dir_all(&replacement_app);
-        return Err(error);
-    }
-    let mut gatekeeper = Command::new("spctl");
-    gatekeeper
-        .args(["--assess", "--type", "execute", "--verbose=2"])
-        .arg(&replacement_app);
-    if let Err(error) =
-        run_macos_update_command(&mut gatekeeper, "Verify replacement macOS application system trust status")
-    {
-        let _ = fs::remove_dir_all(&replacement_app);
-        return Err(error);
+    if !descriptor.trusted_by_ed25519 {
+        let mut codesign = Command::new("codesign");
+        codesign
+            .args(["--verify", "--deep", "--strict"])
+            .arg(&replacement_app);
+        if let Err(error) = run_macos_update_command(
+            &mut codesign,
+            "Verify replacement macOS application signature",
+        ) {
+            let _ = fs::remove_dir_all(&replacement_app);
+            return Err(error);
+        }
+        let mut gatekeeper = Command::new("spctl");
+        gatekeeper
+            .args(["--assess", "--type", "execute", "--verbose=2"])
+            .arg(&replacement_app);
+        if let Err(error) = run_macos_update_command(
+            &mut gatekeeper,
+            "Verify replacement macOS application system trust status",
+        ) {
+            let _ = fs::remove_dir_all(&replacement_app);
+            return Err(error);
+        }
     }
     if descriptor.backup_app.exists() {
         fs::remove_dir_all(&descriptor.backup_app)
@@ -2476,7 +2754,8 @@ fn cleanup_macos_update_payload(descriptor_path: &Path, descriptor: &MacosUpdate
 #[cfg(target_os = "macos")]
 pub(crate) fn run_portable_update_helper(descriptor_path: &Path) -> Result<(), String> {
     let descriptor = serde_json::from_slice::<MacosUpdateDescriptor>(
-        &fs::read(descriptor_path).map_err(|error| format!("Failed to read application update descriptor: {error}"))?,
+        &fs::read(descriptor_path)
+            .map_err(|error| format!("Failed to read application update descriptor: {error}"))?,
     )
     .map_err(|error| format!("Failed to parse application update descriptor: {error}"))?;
     validate_macos_update_descriptor(descriptor_path, &descriptor)?;

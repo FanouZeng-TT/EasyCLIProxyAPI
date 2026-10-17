@@ -44,6 +44,107 @@ fn portable_update_helper_writes_a_distinct_startup_ack() {
 }
 
 #[test]
+fn macos_ed25519_signature_accepts_authentic_payload_and_rejects_tampering() {
+    let root = agent_test_home("macos-update-signature");
+    let archive = root.join("update.tar.gz");
+    fs::write(&archive, b"signed update payload").unwrap();
+    let mut asset = portable_update_test_asset("1.2.3", "aarch64");
+    asset.signature = Some(
+        "ZbyKK5+1GtixLLAgLdGgPAbyBhLGJ723YkI9tgCAFO8W5fB7Yarzs6vKpulNQ5KLaZIrBTAm4NFkvCVB0VimDw=="
+            .to_string(),
+    );
+    verify_macos_update_signature(&archive, &asset).unwrap();
+
+    fs::write(&archive, b"tampered update payload").unwrap();
+    assert!(verify_macos_update_signature(&archive, &asset)
+        .unwrap_err()
+        .contains("verification failed"));
+    asset.signature = None;
+    assert!(verify_macos_update_signature(&archive, &asset)
+        .unwrap_err()
+        .contains("missing"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn macos_tar_gz_staging_rejects_links_and_path_escape() {
+    use flate2::{write::GzEncoder, Compression};
+    use tar::{Builder, EntryType, Header};
+
+    for (name, path, entry_type) in [
+        ("escape", "../outside", EntryType::Regular),
+        ("symlink", "EasyCLIProxyAPI.app/link", EntryType::Symlink),
+    ] {
+        let root = agent_test_home(&format!("macos-tar-{name}"));
+        let archive_path = root.join("update.tar.gz");
+        let file = File::create(&archive_path).unwrap();
+        let encoder = GzEncoder::new(file, Compression::default());
+        let mut archive = Builder::new(encoder);
+        let mut header = Header::new_gnu();
+        header.set_entry_type(entry_type);
+        header.set_size(if entry_type.is_file() { 1 } else { 0 });
+        header.set_mode(0o644);
+        if entry_type.is_symlink() {
+            header.set_link_name("/tmp/escape").unwrap();
+        }
+        header.set_cksum();
+        let append_result = archive.append_data(&mut header, path, b"x".as_slice());
+        if append_result.is_err() {
+            assert_eq!(name, "escape");
+            fs::remove_dir_all(root).unwrap();
+            continue;
+        }
+        archive.into_inner().unwrap().finish().unwrap();
+
+        assert!(stage_macos_application_from_tar_gz(
+            &archive_path,
+            &root.join("staging/EasyCLIProxyAPI.app"),
+        )
+        .is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn macos_tar_gz_stages_one_complete_application_bundle() {
+    use flate2::{write::GzEncoder, Compression};
+    use tar::{Builder, Header};
+
+    let root = agent_test_home("macos-tar-stage");
+    let archive_path = root.join("update.tar.gz");
+    let file = File::create(&archive_path).unwrap();
+    let encoder = GzEncoder::new(file, Compression::default());
+    let mut archive = Builder::new(encoder);
+    for (path, contents, mode) in [
+        (
+            "EasyCLIProxyAPI.app/Contents/MacOS/cpa-gui",
+            b"binary".as_slice(),
+            0o755,
+        ),
+        (
+            "EasyCLIProxyAPI.app/Contents/Resources/portable-app.json",
+            b"{}".as_slice(),
+            0o644,
+        ),
+    ] {
+        let mut header = Header::new_gnu();
+        header.set_size(contents.len() as u64);
+        header.set_mode(mode);
+        header.set_cksum();
+        archive.append_data(&mut header, path, contents).unwrap();
+    }
+    archive.into_inner().unwrap().finish().unwrap();
+
+    let staged = root.join("staging/EasyCLIProxyAPI.app");
+    stage_macos_application_from_tar_gz(&archive_path, &staged).unwrap();
+    assert_eq!(
+        fs::read(staged.join("Contents/MacOS/cpa-gui")).unwrap(),
+        b"binary"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn macos_update_helper_stays_inside_the_signed_app_bundle() {
     let current_exe =
         PathBuf::from("/Applications/EasyCLIProxyAPI.app/Contents/MacOS/EasyCLIProxyAPI");
@@ -168,7 +269,10 @@ fn macos_dmg_staging_survives_cleanup_failure_without_bypassing_verification() {
         } else {
             result.unwrap();
             assert_eq!(preparation, ["hdiutil", "ditto", "codesign", "spctl"]);
-            assert_eq!(fs::read(staged_app.join("payload")).unwrap(), b"application");
+            assert_eq!(
+                fs::read(staged_app.join("payload")).unwrap(),
+                b"application"
+            );
         }
         assert!(source_app.join("payload").is_file());
         fs::remove_dir_all(root).unwrap();
@@ -206,11 +310,7 @@ fn macos_dmg_cleanup_preserves_busy_images_and_retries_later() {
     fs::write(&archive, b"disk image").unwrap();
     fs::write(&mounted_file, b"mounted contents").unwrap();
 
-    cleanup_macos_update_dmg_with_commands(
-        &root,
-        |_, _| Err("Resource busy".to_string()),
-        |_| {},
-    );
+    cleanup_macos_update_dmg_with_commands(&root, |_, _| Err("Resource busy".to_string()), |_| {});
     assert_eq!(fs::read(&archive).unwrap(), b"disk image");
     assert_eq!(fs::read(&mounted_file).unwrap(), b"mounted contents");
 
@@ -243,6 +343,14 @@ fn portable_update_test_asset(version: &str, arch: &str) -> PortableUpdateAsset 
         fallback_urls: Vec::new(),
         sha256: "ab".repeat(32),
         size_bytes: 1024,
+        signature: if display == "Darwin" && suffix == "tar.gz" {
+            Some(
+                "ZbyKK5+1GtixLLAgLdGgPAbyBhLGJ723YkI9tgCAFO8W5fB7Yarzs6vKpulNQ5KLaZIrBTAm4NFkvCVB0VimDw=="
+                    .to_string(),
+            )
+        } else {
+            None
+        },
     }
 }
 
@@ -254,6 +362,7 @@ fn portable_update_test_legacy_asset(version: &str, arch: &str) -> PortableUpdat
         fallback_urls: Vec::new(),
         sha256: "ab".repeat(32),
         size_bytes: 1024,
+        signature: None,
     }
 }
 
@@ -600,6 +709,7 @@ async fn installing_refreshes_an_old_offer_and_bypasses_cached_manifest_response
                     key.clone(),
                     serde_json::json!({
                         "url": asset.url, "sha256": asset.sha256, "sizeBytes": asset.size_bytes,
+                        "signature": asset.signature,
                     }),
                 )
             })
@@ -680,7 +790,10 @@ async fn failed_or_cancelled_refresh_never_downloads_the_previous_offer() {
     let (result, _) = tokio::join!(refresh, async {
         state.cancel();
     });
-    assert_eq!(result.err().as_deref(), Some("Application update download canceled"));
+    assert_eq!(
+        result.err().as_deref(),
+        Some("Application update download canceled")
+    );
     assert!(state.snapshot().target_version.is_none());
     let pending = PendingAppUpdate {
         version: "v0.3.3".to_string(),
@@ -829,9 +942,7 @@ fn portable_update_replacement_preserves_user_data_and_can_roll_back() {
     fs::write(app_dir.join(PORTABLE_APP_MANIFEST_FILE), b"old manifest").unwrap();
     fs::write(app_dir.join(CORE_VERSION_FILE), b"7.2.100").unwrap();
     fs::write(
-        app_dir
-            .join("cpa-core")
-            .join(&old_archive),
+        app_dir.join("cpa-core").join(&old_archive),
         b"old core archive",
     )
     .unwrap();
@@ -856,9 +967,7 @@ fn portable_update_replacement_preserves_user_data_and_can_roll_back() {
     fs::write(staging.join(PORTABLE_APP_MANIFEST_FILE), b"new manifest").unwrap();
     fs::write(staging.join(CORE_VERSION_FILE), b"7.2.109").unwrap();
     fs::write(
-        staging
-            .join("cpa-core")
-            .join(&new_archive),
+        staging.join("cpa-core").join(&new_archive),
         b"new core archive",
     )
     .unwrap();
@@ -873,12 +982,8 @@ fn portable_update_replacement_preserves_user_data_and_can_roll_back() {
         current_core_version: app_dir.join(CORE_VERSION_FILE),
         staged_core_version: staging.join(CORE_VERSION_FILE),
         backup_core_version: app_dir.join(".core-version.txt.update-backup"),
-        staged_core_archive: staging
-            .join("cpa-core")
-            .join(&new_archive),
-        target_core_archive: app_dir
-            .join("cpa-core")
-            .join(&new_archive),
+        staged_core_archive: staging.join("cpa-core").join(&new_archive),
+        target_core_archive: app_dir.join("cpa-core").join(&new_archive),
         install_core_archive: true,
         ack_path: work_dir.join("update-started.ack"),
         work_dir,
@@ -1012,6 +1117,7 @@ fn macos_update_descriptor_is_confined_to_the_app_and_temp_directories() {
         ack_path: work_dir.join("update-started.ack"),
         work_dir: work_dir.clone(),
         target_version: "1.2.3".to_string(),
+        trusted_by_ed25519: true,
     };
     fs::create_dir_all(&work_dir).unwrap();
     let descriptor_path = work_dir.join("update-descriptor.json");

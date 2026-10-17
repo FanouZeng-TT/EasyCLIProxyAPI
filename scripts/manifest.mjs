@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, createPrivateKey, sign } from 'node:crypto';
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -68,6 +68,13 @@ export async function generatePortableUpdateManifest({
     throw new Error(`Invalid publishedAt: ${publishedAt}`);
   }
   if (releaseNotes !== undefined) validateReleaseNotes(releaseNotes);
+  const macosSigningKey = normalizedPlatform === 'darwin' && platformSpec.suffix === 'tar.gz'
+    ? String(process.env.MACOS_UPDATE_ED25519_PRIVATE_KEY ?? '').trim()
+    : '';
+  if (normalizedPlatform === 'darwin' && platformSpec.suffix === 'tar.gz' && !macosSigningKey) {
+    throw new Error('MACOS_UPDATE_ED25519_PRIVATE_KEY is required for unsigned macOS releases');
+  }
+  const signingKey = macosSigningKey ? createPrivateKey(macosSigningKey) : null;
 
   const assets = {};
   for (const arch of ['amd64', 'aarch64']) {
@@ -81,6 +88,7 @@ export async function generatePortableUpdateManifest({
       url: `https://github.com/${resolvedRepository}/releases/download/${tag}/${filename}`,
       sha256: createHash('sha256').update(contents).digest('hex'),
       sizeBytes: metadata.size,
+      ...(signingKey ? { signature: sign(null, contents, signingKey).toString('base64') } : {}),
     };
     if (resolvedGitcodeRepository) {
       asset.fallbackUrls = [gitcodeReleaseAttachmentUrl(
