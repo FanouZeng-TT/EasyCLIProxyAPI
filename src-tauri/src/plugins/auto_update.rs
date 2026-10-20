@@ -1,7 +1,10 @@
 use super::super::*;
 
 const BYTEPROXY_PLUGIN_ID: &str = "byteproxy";
-const BYTEPROXY_UPDATE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
+// Check often so a new ByteProxy release reaches users within minutes. A check is
+// only a small registry listing plus a local plugins-dir scan: nothing is
+// downloaded and CPA is not restarted unless the version actually changed.
+const BYTEPROXY_UPDATE_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const BYTEPROXY_INITIAL_DELAY: Duration = Duration::from_secs(20);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
