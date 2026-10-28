@@ -337,7 +337,7 @@ export const en: Record<MessageKey, string> = {
   'agents.catalog.context': 'Context window (tokens)',
   'agents.catalog.contextSource.client': 'Context source: the CPA core Codex client model catalog API.',
   'agents.catalog.contextSource.configuration': 'Context source: max-context-length configured for this model in the CPA core.',
-  'agents.catalog.contextSource.template': 'The core provides no valid context data. The current value is a fallback from the application template.',
+  'agents.catalog.contextSource.template': 'Upstream capacity is unknown. Custom values are preserved; unconfigured models default to 250K tokens.',
   'agents.catalog.contextSource.customized': 'Context source: your custom settings for this model.',
   'agents.catalog.maximum': 'Maximum context window (tokens)',
   'agents.catalog.percent': 'Effective context (%)',

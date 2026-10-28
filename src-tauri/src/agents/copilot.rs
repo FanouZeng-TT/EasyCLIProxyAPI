@@ -187,12 +187,7 @@ pub(crate) fn enrich_vscode_context_windows(
     models: &mut [AgentModelOption],
     runtime_models: &[codex_catalog::CodexRuntimeModel],
 ) -> Result<(), String> {
-    let prepared = prepare_codex_agent_models(runtime_models)?;
-    for model in models {
-        if let Some(source) = prepared.models.iter().find(|source| source.name.eq_ignore_ascii_case(&model.name)) {
-            model.context_window = source.context_window.or(model.context_window);
-        }
-    }
+    codex_catalog::merge_runtime_context_windows(models, runtime_models);
     Ok(())
 }
 

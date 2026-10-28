@@ -336,7 +336,7 @@ export const zhCN = {
   'agents.catalog.context': '上下文窗口（tokens）',
   'agents.catalog.contextSource.client': '上下文来源：CPA 内核的 Codex 客户端模型列表 API。',
   'agents.catalog.contextSource.configuration': '上下文来源：CPA 内核中为此模型配置的 max-context-length。',
-  'agents.catalog.contextSource.template': '内核未提供有效的上下文数据，当前使用软件模板的后备值。',
+  'agents.catalog.contextSource.template': '未获取到上游最大容量；保留自定义值，未配置时默认 250K Token。',
   'agents.catalog.contextSource.customized': '上下文来源：你为此模型保存或编辑的自定义配置。',
   'agents.catalog.maximum': '最大上下文窗口（tokens）',
   'agents.catalog.percent': '有效上下文比例（%）',

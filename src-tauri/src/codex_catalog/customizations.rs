@@ -243,6 +243,8 @@ pub(super) fn snapshot_for_state(
         let key = normalize_id(&slug);
         let defaults = editable_configuration(&model);
         apply_customizations(&mut model, &state.customizations)?;
+        let runtime = runtime_models.iter().find(|runtime| normalize_id(&runtime.slug) == key);
+        super::runtime_context::apply_context_policy(&mut model, runtime, false);
         models.push(CatalogEditorModel {
             slug,
             has_official_template: state.sources.templates.contains_key(&key),
@@ -565,8 +567,8 @@ mod tests {
         runtime.context_window = Some(128_000);
         runtime.max_context_window = Some(256_000);
         let snapshot = snapshot_for_state(&[runtime.clone()], &state).unwrap();
-        assert_eq!(snapshot.models[0].configuration["context_window"], 128_000);
-        assert_eq!(snapshot.models[0].defaults["max_context_window"], 256_000);
+        assert_eq!(snapshot.models[0].configuration["context_window"], 250_000);
+        assert_eq!(snapshot.models[0].defaults["max_context_window"], 250_000);
         assert_eq!(
             snapshot.models[0].defaults["effective_context_window_percent"],
             95
@@ -588,13 +590,12 @@ mod tests {
         runtime.context_window = Some(512_000);
         runtime.max_context_window = Some(1_000_000);
         let updated = snapshot_for_state(&[runtime.clone()], &state).unwrap();
-        assert_ne!(updated.revision, snapshot.revision);
-        assert_eq!(updated.models[0].defaults["context_window"], 512_000);
-        assert_eq!(updated.models[0].defaults["max_context_window"], 1_000_000);
+        assert_eq!(updated.models[0].defaults["context_window"], 250_000);
+        assert_eq!(updated.models[0].defaults["max_context_window"], 250_000);
         assert_eq!(updated.models[0].configuration["context_window"], 192_000);
         assert_eq!(
             updated.models[0].configuration["max_context_window"],
-            256_000
+            250_000
         );
 
         state.customizations = customizations_from_request(
@@ -613,8 +614,8 @@ mod tests {
             prepare_catalog_with_customizations(&[runtime], &state.sources, &state.customizations)
                 .unwrap();
         let model: Value = serde_json::from_str(&generated.json).unwrap();
-        assert_eq!(model["models"][0]["context_window"], 512_000);
-        assert_eq!(model["models"][0]["max_context_window"], 1_000_000);
+        assert_eq!(model["models"][0]["context_window"], 250_000);
+        assert_eq!(model["models"][0]["max_context_window"], 250_000);
     }
 
     #[test]

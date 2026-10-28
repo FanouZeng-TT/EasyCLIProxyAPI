@@ -9,7 +9,7 @@ pub(crate) use customizations::{
     editor_snapshot, load_customizations, save_customizations, CatalogEditorRequest,
     CatalogEditorSnapshot,
 };
-pub(crate) use runtime_context::apply_configured_context_limits;
+pub(crate) use runtime_context::{apply_client_context_limits, apply_configured_context_limits, sync_client_context_limits};
 
 const MODEL_CATALOG_JSON: &str = include_str!("../resources/codex_models/model-catalog.json");
 const FALLBACK_MODEL_JSON: &str = include_str!("../resources/codex_models/fallback-model.json");
@@ -140,6 +140,8 @@ pub(crate) fn parse_public_models(payload: &Value) -> Result<Vec<CodexRuntimeMod
         // using configuration mapping fields or generate additional IDs.
         entry.remove("alias");
         entry.remove("fork");
+        entry.remove("max_context_length");
+        entry.remove("maxContextLength");
         entries.push(Value::Object(entry));
     }
     parse_runtime_models(&serde_json::json!({"data": entries}))
@@ -495,7 +497,12 @@ fn prepare_catalog_with_customizations(
 
     for entry in &mut entries {
         entry.value.insert("supports_parallel_tool_calls".to_string(), Value::Bool(true));
+        let runtime = runtime_models.iter().find(|runtime| {
+            normalize_id(&runtime.slug) == normalize_id(&string_value(&entry.value, "slug"))
+        });
+        runtime_context::apply_context_policy(&mut entry.value, runtime, true);
         customizations::apply_customizations(&mut entry.value, customizations)?;
+        runtime_context::apply_context_policy(&mut entry.value, runtime, false);
     }
 
     for entry in &entries {
@@ -1204,9 +1211,9 @@ mod tests {
         let catalog = prepare_catalog_with_sources(&runtime, &sources).unwrap();
         let output = output_models(&catalog);
         for (slug, context, maximum) in [
-            ("gpt-6-astra", 372_000, 872_000),
-            ("gpt-5.6-sol", 921_000, 1_000_000),
-            ("deepseek-v4-flash", 1_000_000, 1_048_576),
+            ("gpt-6-astra", 250_000, 250_000),
+            ("gpt-5.6-sol", 250_000, 250_000),
+            ("deepseek-v4-flash", 250_000, 250_000),
             ("other-model", 128_000, 128_000),
         ] {
             let model = output.iter().find(|model| model["slug"] == slug).unwrap();
@@ -1235,8 +1242,8 @@ mod tests {
             }]}));
             let catalog = prepare_catalog_with_sources(&runtime, &sources).unwrap();
             let model = &output_models(&catalog)[0];
-            assert_eq!(model["context_window"], maximum);
-            assert_eq!(model["max_context_window"], maximum);
+            assert_eq!(model["context_window"], maximum.min(250_000));
+            assert_eq!(model["max_context_window"], maximum.min(250_000));
         }
     }
 
@@ -1335,8 +1342,8 @@ mod tests {
 
         assert_eq!(model["slug"], "gpt-6.1-sol");
         assert_eq!(model["display_name"], "gpt-6.1-sol");
-        assert_eq!(model["context_window"], 272_000);
-        assert_eq!(model["max_context_window"], 872_000);
+        assert_eq!(model["context_window"], 250_000);
+        assert_eq!(model["max_context_window"], 250_000);
         assert_eq!(model["default_reasoning_level"], "low");
         assert_eq!(
             reasoning_efforts(model),
@@ -1387,8 +1394,8 @@ mod tests {
         let catalog = prepare_catalog_with_sources(&runtime, &sources).unwrap();
         let model = &output_models(&catalog)[0];
 
-        assert_eq!(model["context_window"], 1_048_576);
-        assert_eq!(model["max_context_window"], 1_048_576);
+        assert_eq!(model["context_window"], 250_000);
+        assert_eq!(model["max_context_window"], 250_000);
         assert_eq!(model["default_reasoning_level"], "low");
         assert_eq!(
             reasoning_efforts(model),
@@ -1426,8 +1433,8 @@ mod tests {
         let model = &output_models(&catalog)[0];
         assert_eq!(model["display_name"], "C");
         assert!(reasoning_efforts(model).is_empty());
-        assert_eq!(model["context_window"], 200_000);
-        assert_eq!(model["max_context_window"], 200_000);
+        assert_eq!(model["context_window"], 100_000);
+        assert_eq!(model["max_context_window"], 100_000);
         assert_eq!(model["input_modalities"], serde_json::json!(["image"]));
         assert_eq!(model["supports_image_detail_original"], false);
         assert_eq!(model["default_reasoning_level"], Value::Null);
@@ -1459,8 +1466,8 @@ mod tests {
             "slug": "unknown-model",
             "display_name": "unknown-model",
             "description": null,
-            "context_window": 272000,
-            "max_context_window": 272000,
+            "context_window": 250000,
+            "max_context_window": 250000,
             "auto_compact_token_limit": null,
             "comp_hash": null,
             "effective_context_window_percent": 95,
@@ -1612,8 +1619,8 @@ mod tests {
         }]}));
         let catalog = prepare_catalog_with_sources(&runtime, &test_sources()).unwrap();
         let model = &output_models(&catalog)[0];
-        assert_eq!(model["context_window"], 128_000);
-        assert_eq!(model["max_context_window"], 128_000);
+        assert_eq!(model["context_window"], 250_000);
+        assert_eq!(model["max_context_window"], 250_000);
         assert_eq!(model["display_name"], "C");
         assert_eq!(model["visibility"], "list");
         assert_eq!(model["web_search_tool_type"], "text");

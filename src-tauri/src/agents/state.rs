@@ -1398,21 +1398,21 @@ pub(crate) fn sync_codex_model_catalog_if_configured(
             after: catalog.to_string(),
         });
     }
+    let content = fs::read_to_string(&paths[0])
+        .map_err(|error| format!("Failed to read Codex configuration: {error}"))?;
+    let mut document = content
+        .parse::<toml_edit::Document>()
+        .map_err(|error| format!("Invalid Codex config.toml format: {error}"))?;
     if current_model.as_deref() != next_model {
-        let content = fs::read_to_string(&paths[0])
-            .map_err(|error| format!("Failed to read Codex configuration: {error}"))?;
-        let mut document = content
-            .parse::<toml_edit::Document>()
-            .map_err(|error| format!("Invalid Codex config.toml format: {error}"))?;
         if let Some(model) = next_model {
             set_codex_table_item(document.as_table_mut(), "model", toml_edit::value(model));
         } else {
             document.remove("model");
         }
-        updates.push(AgentFileUpdate {
-            path: paths[0].clone(),
-            after: document.to_string(),
-        });
+    }
+    let synchronized = codex_catalog::sync_client_context_limits(&document.to_string(), catalog)?;
+    if synchronized != content {
+        updates.push(AgentFileUpdate { path: paths[0].clone(), after: synchronized });
     }
     if updates.is_empty() {
         return Ok(false);

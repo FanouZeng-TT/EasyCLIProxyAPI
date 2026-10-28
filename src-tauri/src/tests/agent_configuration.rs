@@ -462,7 +462,7 @@ fn claude_desktop_omits_unsupported_context_window_when_1m_is_off() {
 #[test]
 fn codex_agent_config_uses_managed_provider_without_losing_comments() {
     let rendered = build_codex_agent_config(
-        Some("# keep this comment\napproval_policy = \"on-request\"\n"),
+        Some("# keep this comment\napproval_policy = \"on-request\"\nmodel_context_window = 1000000\nmodel_auto_compact_token_limit = 900000\n"),
         "http://127.0.0.1:8317/v1",
         DEFAULT_API_KEY,
         "gpt-test",
@@ -471,6 +471,8 @@ fn codex_agent_config_uses_managed_provider_without_losing_comments() {
     let value: toml::Value = toml::from_str(&rendered).unwrap();
 
     assert!(rendered.contains("# keep this comment"));
+    assert_eq!(value["model_context_window"].as_integer(), Some(1_000_000));
+    assert_eq!(value["model_auto_compact_token_limit"].as_integer(), Some(900_000));
     assert_eq!(value["approval_policy"].as_str(), Some("on-request"));
     assert_eq!(
         value["model_provider"].as_str(),

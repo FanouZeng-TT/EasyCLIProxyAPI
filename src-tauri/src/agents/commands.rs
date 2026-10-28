@@ -892,6 +892,12 @@ pub(crate) async fn fetch_codex_catalog_runtime_models(
     // IDs, not the alternate catalog selected by client_version.
     let mut runtime = codex_catalog::parse_public_models(&runtime?)?;
     codex_catalog::apply_configured_context_limits(&mut runtime, &content?)?;
+    if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
+        let path = agent_config_paths(AgentClient::Codex, Path::new(&home))[0].clone();
+        if let Some(content) = read_optional_text(&path)? {
+            codex_catalog::apply_client_context_limits(&mut runtime, &content)?;
+        }
+    }
     Ok(runtime)
 }
 

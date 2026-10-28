@@ -115,6 +115,7 @@ pub(crate) fn build_agent_updates_with_oauth(
             }];
             let catalog = codex_catalog.ok_or_else(|| "Unable to generate Codex model catalog".to_string())?;
             validate_codex_catalog(catalog, model)?;
+            updates[0].after = crate::codex_catalog::sync_client_context_limits(&updates[0].after, catalog)?;
             updates.push(AgentFileUpdate {
                 path: codex_model_catalog_path(home),
                 after: catalog.to_string(),
