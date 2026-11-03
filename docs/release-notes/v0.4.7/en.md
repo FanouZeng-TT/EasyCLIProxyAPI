@@ -13,5 +13,6 @@
 
 ## Validation
 
-- Regression checks cover configuration defaults, preserved opt-outs and Codex catalog synchronization; frontend type checking passed.
+- All 145 GUI configuration and catalog regression tests passed, together with frontend type checking. Core capability packages, race checks and full static analysis passed.
+- Full core testing encountered Home cluster heartbeat timeout failures reproduced on the unchanged baseline. An additional Home client close-wait timeout occurred in the initial full run and passed in isolation. Full core test success is not claimed.
 - Release builds use production web assets and package the matching core for each platform. The local proxy is not restarted for this release. Build and regression validation does not constitute end-to-end acceptance for every client.
