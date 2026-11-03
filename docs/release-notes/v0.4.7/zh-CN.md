@@ -1,6 +1,6 @@
 ## Codex 独立 apply_patch 工具
 
-- 配套交付 **CPA GUI 0.4.7 + CPA 内核 8.0.40**，安装包内含匹配内核。
+- 配套交付 **CPA GUI 0.4.7 + CPA 内核 8.0.53**，安装包内含匹配内核。
 - 内核新增插件 `executor_apply_patch` 能力声明及 `executor_apply_patch_models` 模型前缀范围；仅当模型的所有候选执行器均支持时，才公开 `apply_patch_tool_type: freeform`。
 - GUI 将内核报告的能力同步到受管的 Codex 模型目录，使支持该能力的 Codex 客户端能够注册独立 `apply_patch` 工具，显示文件编辑操作；无需修改 Codex 客户端源码。
 - 新安装及缺少该配置的已有安装默认开启能力公开；用户明确设置的关闭状态会保留。
