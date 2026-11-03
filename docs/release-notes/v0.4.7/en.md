@@ -1,6 +1,6 @@
 ## Standalone Codex apply_patch tool
 
-- Ships **CPA GUI 0.4.7 with CPA core 8.0.40** in matching installation packages.
+- Ships **CPA GUI 0.4.7 with CPA core 8.0.53** in matching installation packages.
 - The core adds plugin declarations `executor_apply_patch` and `executor_apply_patch_models` model prefixes. A model advertises `apply_patch_tool_type: freeform` only when every candidate executor supports it.
 - The GUI synchronizes core-reported capabilities to the managed Codex model catalog, allowing compatible Codex clients to register the standalone `apply_patch` tool and display file edits. No Codex client source changes are required.
 - Capability advertisement defaults to enabled for new installations and existing configurations without the setting. Explicit opt-outs remain disabled.
