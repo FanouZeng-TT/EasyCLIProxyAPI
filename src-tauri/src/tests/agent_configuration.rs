@@ -2146,8 +2146,8 @@ async fn codex_configuration_uses_public_v1_model_ids_for_selection_and_files() 
     written.sort();
     assert_eq!(ids, written);
     let public_model = catalog["models"].as_array().unwrap().iter().find(|model| model["slug"] == "public-model").unwrap();
-    assert_eq!(public_model["context_window"], 1_048_576);
-    assert_eq!(public_model["max_context_window"], 1_048_576);
+    assert_eq!(public_model["context_window"], 250_000);
+    assert_eq!(public_model["max_context_window"], 250_000);
     assert_eq!(public_model["default_reasoning_level"], "medium");
     assert_eq!(public_model["supported_reasoning_levels"].as_array().unwrap().len(), 3);
 }

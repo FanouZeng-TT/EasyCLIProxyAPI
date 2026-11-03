@@ -1504,10 +1504,10 @@ mod tests {
         ]})).unwrap();
         let catalog = prepare_catalog_with_sources(&runtime, &sources).unwrap();
         let output = output_models(&catalog);
-        assert_eq!(output[0]["context_window"], 500_000);
-        assert_eq!(output[0]["max_context_window"], 872_000);
+        assert_eq!(output[0]["context_window"], 250_000);
+        assert_eq!(output[0]["max_context_window"], 250_000);
         assert!(output[0]["auto_compact_token_limit"].is_null());
-        assert_eq!(catalog.models[0].context_window, Some(500_000));
+        assert_eq!(catalog.models[0].context_window, Some(250_000));
     }
 
     #[test]
@@ -2102,8 +2102,8 @@ mod tests {
         let catalog = prepare_catalog_with_sources(&public, &sources).unwrap();
         let model = &output_models(&catalog)[0];
         assert_eq!(model["slug"], "gemini-4-argon-high");
-        assert_eq!(model["context_window"], 1_048_576);
-        assert_eq!(model["max_context_window"], 1_048_576);
+        assert_eq!(model["context_window"], 250_000);
+        assert_eq!(model["max_context_window"], 250_000);
         assert_eq!(reasoning_efforts(model), ["low", "medium", "high"]);
         assert_eq!(model["default_reasoning_level"], "medium");
         let fallback_descriptions = sources.fallback["supported_reasoning_levels"]

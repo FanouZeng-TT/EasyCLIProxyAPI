@@ -172,17 +172,16 @@ mod tests {
             .unwrap();
             let mut customizations = customizations::ModelCustomizations::default();
             if let Some(requested) = requested {
-                customizations.insert(
-                    "policy-model".into(),
-                    serde_json::json!({
-                        "context_window": requested,
-                        "max_context_window": requested,
-                        "auto_compact_token_limit": requested
-                    })
-                    .as_object()
-                    .unwrap()
-                    .clone(),
-                );
+                customizations = customizations::decode_customizations(
+                    &serde_json::to_vec(&serde_json::json!({
+                        "version": 1,
+                        "models": {"policy-model": {
+                            "context_window": requested,
+                            "max_context_window": requested,
+                            "auto_compact_token_limit": requested
+                        }}
+                    })).unwrap(),
+                ).unwrap();
             }
             let state = CatalogState {
                 sources: parse_sources(MODEL_CATALOG_JSON).unwrap(),
@@ -211,7 +210,7 @@ mod tests {
             }
             if let Some(requested) = requested {
                 assert_eq!(
-                    state.customizations["policy-model"]["context_window"],
+                    serde_json::to_value(&state.customizations).unwrap()["models"]["policy-model"]["context_window"],
                     requested
                 );
             }

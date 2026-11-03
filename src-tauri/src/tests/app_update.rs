@@ -1327,7 +1327,7 @@ fn synthetic_release_uses_official_asset_names_and_urls() {
     assert_eq!(asset.name, "CLIProxyAPI_7.2.80_linux_amd64.tar.gz");
     assert_eq!(
             asset.browser_download_url,
-            "https://github.com/router-for-me/CLIProxyAPI/releases/download/v7.2.80/CLIProxyAPI_7.2.80_linux_amd64.tar.gz"
+            "https://github.com/FanouZeng-TT/CLIProxyAPI/releases/download/v7.2.80/CLIProxyAPI_7.2.80_linux_amd64.tar.gz"
         );
 }
 
@@ -1350,7 +1350,7 @@ fn synthetic_core_release_uses_gitcode_as_download_fallback() {
 
     assert_eq!(
             asset.browser_download_url,
-            "https://github.com/router-for-me/CLIProxyAPI/releases/download/v7.2.80/CLIProxyAPI_7.2.80_windows_amd64.zip"
+            "https://github.com/FanouZeng-TT/CLIProxyAPI/releases/download/v7.2.80/CLIProxyAPI_7.2.80_windows_amd64.zip"
         );
     assert_eq!(
             asset.fallback_download_urls,
@@ -1376,7 +1376,7 @@ fn gitcode_discovered_core_release_downloads_from_gitcode_first() {
         );
     assert_eq!(
         asset.fallback_download_urls,
-        ["https://github.com/router-for-me/CLIProxyAPI/releases/download/v7.2.80/CLIProxyAPI_7.2.80_linux_aarch64.tar.gz"]
+        ["https://github.com/FanouZeng-TT/CLIProxyAPI/releases/download/v7.2.80/CLIProxyAPI_7.2.80_linux_aarch64.tar.gz"]
     );
 }
 

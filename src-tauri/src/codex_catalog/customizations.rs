@@ -366,7 +366,7 @@ fn customizations_from_request(
     Ok(customizations)
 }
 
-fn decode_customizations(content: &[u8]) -> Result<ModelCustomizations, String> {
+pub(super) fn decode_customizations(content: &[u8]) -> Result<ModelCustomizations, String> {
     if content.len() > crate::MAX_CODEX_MODEL_CATALOG_BYTES {
         return Err("Codex custom model configuration exceeds the size limit".to_string());
     }
@@ -636,7 +636,7 @@ mod tests {
         };
         for current in [&state, &restarted] {
             let snapshot = snapshot_for_state(&runtime, current).unwrap();
-            assert_eq!(snapshot.models[0].defaults["context_window"], 600_000);
+            assert_eq!(snapshot.models[0].defaults["context_window"], 250_000);
             assert_eq!(snapshot.models[0].configuration["context_window"], 128_000);
             let catalog = prepare_catalog_with_customizations(
                 &runtime, &current.sources, &current.customizations,

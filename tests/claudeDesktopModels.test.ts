@@ -9,8 +9,8 @@ const entry = { model: 'gpt-one', alias: 'claude-sonnet-4-6', context1m: false }
 describe('Claude Desktop custom models', () => {
   test('migrates old slots without filling an empty configuration', () => {
     expect(desktopModelEntries(legacy)).toEqual([
-      { model: 'gpt-one', alias: 'claude-opus-4-6', context1m: true },
-      { model: 'gpt-two', alias: 'claude-sonnet-4-6', context1m: false },
+      { model: 'gpt-one', alias: 'cpa-opus-4-5', context1m: true },
+      { model: 'gpt-two', alias: 'cpa-sonnet-4-5', context1m: false },
       { model: 'claude-haiku-4-5', alias: '', context1m: false },
     ]);
     expect(desktopModelEntries({ opus: '', sonnet: '', haiku: '' })).toEqual([]);

@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const releaseWorkflow = Bun.YAML.parse(readFileSync('.github/workflows/release.yml', 'utf8')) as any;
+const sourceVersion = Bun.TOML.parse(readFileSync('src-tauri/Cargo.toml', 'utf8')).package.version as string;
+const baseVersion = sourceVersion.split(/[-+]/)[0];
 
 function runResolveVersionScript(env: Record<string, string>) {
   const versionJob = releaseWorkflow.jobs.version;
@@ -52,7 +54,7 @@ describe('release version resolution workflow', () => {
       GITHUB_EVENT_NAME: 'workflow_dispatch',
     });
     expect(outputs.tag).toBe('only-preview');
-    expect(outputs.version).toBe('0.3.6-preview');
+    expect(outputs.version).toBe(`${baseVersion}-preview`);
   });
 
   it('normalizes bare semver to v-prefixed tag', () => {
@@ -81,8 +83,8 @@ describe('release version resolution workflow', () => {
       MIAOMIAO_PREVIEW: 'false',
       GITHUB_EVENT_NAME: 'workflow_dispatch',
     });
-    expect(outputs.tag).toBe('v0.3.6');
-    expect(outputs.version).toBe('0.3.6');
+    expect(outputs.tag).toBe(`v${sourceVersion}`);
+    expect(outputs.version).toBe(sourceVersion);
   });
 
   it('resolves rolling miaomiao preview tag and version', () => {
@@ -91,8 +93,8 @@ describe('release version resolution workflow', () => {
       MIAOMIAO_PREVIEW: 'true',
       GITHUB_EVENT_NAME: 'workflow_call',
     });
-    expect(outputs.tag).toBe('v0.3.6-miaomiao.10.1');
-    expect(outputs.version).toBe('0.3.6-miaomiao.10.1');
+    expect(outputs.tag).toBe(`v${baseVersion}-miaomiao.10.1`);
+    expect(outputs.version).toBe(`${baseVersion}-miaomiao.10.1`);
   });
 
   it('resolves pull request tag and version', () => {
@@ -101,7 +103,7 @@ describe('release version resolution workflow', () => {
       MIAOMIAO_PREVIEW: 'false',
       GITHUB_EVENT_NAME: 'pull_request',
     });
-    expect(outputs.tag).toBe('v0.3.6-pr.42.10.1');
-    expect(outputs.version).toBe('0.3.6-pr.42.10.1');
+    expect(outputs.tag).toBe(`v${baseVersion}-pr.42.10.1`);
+    expect(outputs.version).toBe(`${baseVersion}-pr.42.10.1`);
   });
 });

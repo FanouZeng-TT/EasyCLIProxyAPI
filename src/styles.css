@@ -6545,13 +6545,6 @@ textarea:focus-visible {
   margin-top: 12px;
 }
 
-.agent-desktop-model-notice {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-caption);
-  line-height: 1.5;
-}
-
 .agent-desktop-help-dialog {
   grid-template-rows: auto;
   align-content: start;
