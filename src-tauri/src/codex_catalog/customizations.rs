@@ -422,6 +422,7 @@ mod tests {
             context_source: "template",
             input_modalities: None,
             default_reasoning_level: None,
+            apply_patch_tool_type: None,
             hidden: false,
         }
     }

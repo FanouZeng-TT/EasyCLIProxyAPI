@@ -310,6 +310,7 @@ pub(crate) fn merge_core_config_yaml(
         }
         None => merge_core_config_fields(template, None)?,
     };
+    let base = apply_codex_apply_patch_default(&base, current)?;
     // Old mirrored values may be stale after a kernel upgrade. Only an explicit
     // software-side opt-out should disable statistics when starting the kernel.
     let mut startup_config = config.clone();

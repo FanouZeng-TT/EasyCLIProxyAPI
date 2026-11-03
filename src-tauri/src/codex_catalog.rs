@@ -26,6 +26,7 @@ pub(crate) struct CodexRuntimeModel {
     context_source: &'static str,
     input_modalities: Option<Vec<String>>,
     default_reasoning_level: Option<String>,
+    apply_patch_tool_type: Option<String>,
     hidden: bool,
 }
 
@@ -199,6 +200,9 @@ pub(crate) fn parse_runtime_models(payload: &Value) -> Result<Vec<CodexRuntimeMo
             optional_string(value, &["default_reasoning_level", "defaultReasoningLevel"])
                 .map(|value| value.to_ascii_lowercase())
                 .filter(|value| is_allowed_reasoning_level(value));
+        let apply_patch_tool_type = optional_string(value, &["apply_patch_tool_type"])
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| value == "freeform");
         let hidden = optional_string(value, &["visibility"])
             .is_some_and(|value| value.eq_ignore_ascii_case("hide"));
 
@@ -215,6 +219,7 @@ pub(crate) fn parse_runtime_models(payload: &Value) -> Result<Vec<CodexRuntimeMo
             },
             input_modalities: input_modalities.clone(),
             default_reasoning_level: default_reasoning_level.clone(),
+            apply_patch_tool_type: apply_patch_tool_type.clone(),
             hidden,
         };
 
@@ -503,6 +508,15 @@ fn prepare_catalog_with_customizations(
         runtime_context::apply_context_policy(&mut entry.value, runtime, true);
         customizations::apply_customizations(&mut entry.value, customizations)?;
         runtime_context::apply_context_policy(&mut entry.value, runtime, false);
+        // CPA reports this per model, so it is authoritative: advertise the
+        // freeform tool only where the routed backend really supports it.
+        entry.value.insert(
+            "apply_patch_tool_type".to_string(),
+            match runtime.and_then(|runtime| runtime.apply_patch_tool_type.as_deref()) {
+                Some("freeform") => Value::String("freeform".to_string()),
+                _ => Value::Null,
+            },
+        );
     }
 
     for entry in &entries {
@@ -1299,6 +1313,27 @@ mod tests {
 
         assert_eq!(model["slug"], "A");
         assert_eq!(model["display_name"], "A");
+    }
+
+    #[test]
+    fn runtime_apply_patch_capability_is_written_for_bridged_models() {
+        let runtime = runtime(serde_json::json!({"data":[
+            {"id":"llmbox_a","apply_patch_tool_type":"freeform"},
+            {"id":"trae_a"},
+            {"id":"llmbox_b","apply_patch_tool_type":null}
+        ]}));
+        let catalog = prepare_catalog_with_sources(&runtime, &test_sources()).unwrap();
+        let models = output_models(&catalog);
+        let by_slug = |slug: &str| {
+            models
+                .iter()
+                .find(|model| model["slug"] == slug)
+                .unwrap()
+                .clone()
+        };
+        assert_eq!(by_slug("llmbox_a")["apply_patch_tool_type"], "freeform");
+        assert_eq!(by_slug("trae_a")["apply_patch_tool_type"], Value::Null);
+        assert_eq!(by_slug("llmbox_b")["apply_patch_tool_type"], Value::Null);
     }
 
     #[test]

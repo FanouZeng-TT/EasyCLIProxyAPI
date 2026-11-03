@@ -111,6 +111,8 @@ The Usage page helps you understand local request activity and token consumption
 
 ### Agent client configuration
 
+New installations advertise standalone Codex `apply_patch` support by default; existing configurations receive the default only when the setting is absent. Explicit opt-outs are preserved. CPA determines each model's support from its executors and plugin declarations, and the GUI synchronizes it to the managed Codex catalog without model-specific GUI changes.
+
 ![Agent client configuration](docs/screenshots/en/5.png)
 
 The Agents page detects installed desktop and CLI clients and helps connect them to the local
