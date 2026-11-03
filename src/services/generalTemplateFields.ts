@@ -55,7 +55,7 @@ export const requestTemplateGroups: readonly TemplateConfigGroup[] = [
   },
   {
     id: 'codex-client', title: text('Codex 客户端兼容', 'Codex client compatibility', 'Codex クライアントの互換性'), fields: [
-      field('client.codex.enable-apply-patch', 'boolean', '公开 apply_patch 工具能力', 'Advertise apply_patch support', 'apply_patch の対応状況を公開', false, text('在客户端模型目录中，将所有路由执行器均支持的模型标记为支持 freeform；关闭时清空 apply_patch_tool_type。', 'Advertise freeform in client model catalogs only for models supported by every routing executor. When disabled, clear apply_patch_tool_type.', 'すべてのルーティング実行器が対応するモデルのみ、クライアントのモデル一覧で freeform 対応を公開します。無効にすると apply_patch_tool_type を空にします。')),
+      field('client.codex.enable-apply-patch', 'boolean', '公开 apply_patch 工具能力', 'Advertise apply_patch support', 'apply_patch の対応状況を公開', true, text('新安装默认开启，已有配置保留明确的开关选择。在客户端模型目录中，将所有路由执行器均支持的模型标记为支持 freeform；关闭时清空 apply_patch_tool_type。', 'Enabled by default on new installations; preserve explicit choices in existing configurations. Advertise freeform in client model catalogs only for models supported by every routing executor. When disabled, clear apply_patch_tool_type.', '新規インストールでは既定で有効です。既存の設定で明示した選択は維持されます。すべてのルーティング実行器が対応するモデルのみ、クライアントのモデル一覧で freeform 対応を公開します。無効にすると apply_patch_tool_type を空にします。')),
       field('client.codex.optimize-multi-agent-v2', 'boolean', '启用多代理优化 v2', 'Enable multi-agent optimization v2', 'マルチエージェント最適化 v2 を有効化', false, text('刷新 spawn_agent 模型说明、去除消息参数加密并规范化代理消息；同时适用于 OAuth 和 API 密钥请求。', 'Refresh spawn_agent model descriptions, remove message parameter encryption and normalize agent messages for both OAuth and API-key requests.', 'spawn_agent のモデル説明を更新し、メッセージパラメーターの暗号化を解除して、エージェントのメッセージを正規化します。OAuth と API キーの両方の要求に適用します。')),
     ],
   },

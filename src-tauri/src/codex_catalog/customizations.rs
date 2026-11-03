@@ -460,6 +460,7 @@ mod tests {
             input_modalities: None,
             default_reasoning_level: None,
             reasoning_levels: None,
+            apply_patch_tool_type: None,
             hidden: false,
         }
     }
