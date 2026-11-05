@@ -1522,9 +1522,9 @@ mod tests {
         let catalog = prepare_catalog_with_sources(&runtime, &sources).unwrap();
         let output = output_models(&catalog);
         for (slug, context, maximum) in [
-            ("gpt-6-astra", 250_000, 250_000),
-            ("gpt-5.6-sol", 250_000, 250_000),
-            ("deepseek-v4-flash", 250_000, 250_000),
+            ("gpt-6-astra", 350_000, 350_000),
+            ("gpt-5.6-sol", 350_000, 350_000),
+            ("deepseek-v4-flash", 350_000, 350_000),
             ("other-model", 128_000, 128_000),
         ] {
             let model = output.iter().find(|model| model["slug"] == slug).unwrap();
@@ -1553,8 +1553,8 @@ mod tests {
             }]}));
             let catalog = prepare_catalog_with_sources(&runtime, &sources).unwrap();
             let model = &output_models(&catalog)[0];
-            assert_eq!(model["context_window"], maximum.min(250_000));
-            assert_eq!(model["max_context_window"], maximum.min(250_000));
+            assert_eq!(model["context_window"], maximum.min(350_000));
+            assert_eq!(model["max_context_window"], maximum.min(350_000));
         }
     }
 
@@ -1761,8 +1761,8 @@ mod tests {
         let model = &output_models(&catalog)[0];
         let template = &sources.templates["gpt-6-astra"].value;
 
-        assert_eq!(model["context_window"], 250_000);
-        assert_eq!(model["max_context_window"], 250_000);
+        assert_eq!(model["context_window"], 350_000);
+        assert_eq!(model["max_context_window"], 350_000);
         assert_eq!(model["default_reasoning_level"], "medium");
         assert_eq!(
             reasoning_efforts(model),
@@ -2102,8 +2102,8 @@ mod tests {
         let catalog = prepare_catalog_with_sources(&public, &sources).unwrap();
         let model = &output_models(&catalog)[0];
         assert_eq!(model["slug"], "gemini-4-argon-high");
-        assert_eq!(model["context_window"], 250_000);
-        assert_eq!(model["max_context_window"], 250_000);
+        assert_eq!(model["context_window"], 350_000);
+        assert_eq!(model["max_context_window"], 350_000);
         assert_eq!(reasoning_efforts(model), ["low", "medium", "high"]);
         assert_eq!(model["default_reasoning_level"], "medium");
         let fallback_descriptions = sources.fallback["supported_reasoning_levels"]

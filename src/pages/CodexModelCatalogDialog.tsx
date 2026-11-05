@@ -107,7 +107,14 @@ export function CodexModelCatalogDialog({ onClose, onSaved }: CodexModelCatalogD
   const updateField = <Key extends keyof CodexModelConfiguration,>(
     field: Key,
     value: CodexModelConfiguration[Key],
-  ) => updateActive((current) => ({ ...current, [field]: value }));
+  ) => updateActive((current) => {
+    const next: CodexModelConfiguration = { ...current, [field]: value };
+    if (field === 'context_window' && typeof value === 'number'
+      && value > current.max_context_window) {
+      next.max_context_window = value;
+    }
+    return next;
+  });
 
   const toggleReasoning = (
     effort: CodexReasoningEffort,
