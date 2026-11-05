@@ -67,15 +67,13 @@ pub(super) fn apply_context_policy(
     runtime: Option<&CodexRuntimeModel>,
     initialize: bool,
 ) {
-    let maximum = runtime
-        .and_then(|runtime| {
-            if runtime.context_source == "configuration" {
-                runtime.max_context_window
-            } else {
-                runtime.max_context_window.or(runtime.context_window)
-            }
-        })
-        .map(|maximum| maximum.min(350_000));
+    let maximum = runtime.and_then(|runtime| {
+        if runtime.context_source == "configuration" {
+            runtime.max_context_window
+        } else {
+            runtime.max_context_window.or(runtime.context_window)
+        }
+    });
     let configured = runtime
         .filter(|runtime| runtime.context_source == "configuration")
         .and_then(|runtime| runtime.context_window);
@@ -85,10 +83,13 @@ pub(super) fn apply_context_policy(
         } else {
             positive_u64_value(model.get(field)).unwrap_or(250_000)
         };
-        model.insert(
-            field.into(),
-            Value::from(maximum.map_or(requested, |maximum| requested.min(maximum))),
-        );
+        // 上游明确给出上限时：窗口取 350K 与用户配置的较大者，再以上游上限收敛；
+        // 上游未知时不做 350K 收敛，默认 250K，用户配置多少就用多少。
+        let effective = match maximum {
+            Some(maximum) => requested.max(350_000).min(maximum),
+            None => requested,
+        };
+        model.insert(field.into(), Value::from(effective));
     }
     let context = positive_u64_value(model.get("context_window")).unwrap_or(250_000);
     if let Some(compact) = positive_u64_value(model.get("auto_compact_token_limit")) {
@@ -159,9 +160,9 @@ mod tests {
     #[test]
     fn context_policy_limits_known_capacity_and_preserves_unknown_customizations() {
         for (upstream, requested, expected) in [
-            (Some(1_000_000), Some(500_000), 350_000),
+            (Some(1_000_000), Some(500_000), 500_000),
             (Some(128_000), Some(500_000), 128_000),
-            (Some(350_000), Some(100_000), 100_000),
+            (Some(350_000), Some(100_000), 350_000),
             (Some(128_000), None, 128_000),
             (None, Some(1_000_000), 1_000_000),
             (None, None, 250_000),
@@ -206,7 +207,10 @@ mod tests {
                 assert_eq!(model["context_window"], expected);
                 assert_eq!(model["max_context_window"], expected);
                 if requested.is_some() {
-                    assert_eq!(model["auto_compact_token_limit"], expected);
+                    assert_eq!(
+                        model["auto_compact_token_limit"],
+                        requested.unwrap().min(expected)
+                    );
                 }
             }
             if let Some(requested) = requested {
@@ -224,7 +228,7 @@ mod tests {
         for (upstream, expected) in [
             (None, 1_000_000),
             (Some(128_000), 128_000),
-            (Some(1_000_000), 350_000),
+            (Some(1_000_000), 1_000_000),
         ] {
             let mut runtime = parse_runtime_models(&serde_json::json!({"models":[{
                 "slug":"policy-model", "context_length":upstream
@@ -294,8 +298,8 @@ mod tests {
                 .unwrap();
         let catalog: Value = serde_json::from_str(&prepared.json).unwrap();
         for (slug, context, maximum, source) in [
-            ("gpt-5.6-sol", 250_000, 250_000, "client"),
-            ("fast-alias", 250_000, 250_000, "client"),
+            ("gpt-5.6-sol", 350_000, 350_000, "client"),
+            ("fast-alias", 256_000, 256_000, "client"),
             ("missing-context", 250_000, 250_000, "template"),
         ] {
             let model = snapshot["models"]
